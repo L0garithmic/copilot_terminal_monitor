@@ -359,121 +359,24 @@ export function activate(context: vscode.ExtensionContext) {
 function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
 	const alignment = config.get<string>('statusBarAlignment') || 'Left';
 	return `<!DOCTYPE html><html><head><style>
-    :root {
-      --spacing: 16px;
-      --radius: 8px;
-    }
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      padding: 16px;
-      color: var(--vscode-foreground);
-      background-color: var(--vscode-editor-background);
-      line-height: 1.4;
-    }
+    body { font: 13px sans-serif; padding: 16px; color: var(--vscode-foreground); background: var(--vscode-editor-background); line-height: 1.4; }
     .container { max-width: 800px; margin: 0 auto; }
-    .section { 
-      margin-bottom: 16px;
-      padding: 12px 16px;
-      background-color: var(--vscode-sideBar-background);
-      border: 1px solid var(--vscode-widget-border);
-      border-radius: var(--radius);
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
+    .section { margin-bottom: 16px; padding: 12px 16px; background: var(--vscode-sideBar-background); border: 1px solid var(--vscode-widget-border); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     .setting-item { margin-bottom: 10px; }
-    .setting-item:last-child { margin-bottom: 0; }
-    
-    label { display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 4px; opacity: 0.9; }
-    .checkbox-label { 
-      display: flex;
-      align-items: center;
-      font-weight: 600;
-      font-size: 0.9em;
-      cursor: pointer;
-      user-select: none;
-      transition: opacity 0.2s;
-    }
-    .checkbox-label:hover { opacity: 0.8; }
-    .checkbox-label input { 
-      appearance: none;
-      width: 16px;
-      height: 16px;
-      margin-right: 10px;
-      border: 1px solid var(--vscode-checkbox-border);
-      background: var(--vscode-checkbox-background);
-      border-radius: 3px;
-      position: relative;
-      cursor: pointer;
-    }
-    .checkbox-label input:checked { 
-      background: var(--vscode-checkbox-selectBackground);
-      border-color: var(--vscode-checkbox-selectBorder);
-    }
-    .checkbox-label input:checked::after {
-      content: '✓';
-      position: absolute;
-      top: 45%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: #ffffff;
-      font-size: 11px;
-      font-weight: bold;
-    }
-
-    input[type="number"], input[type="text"], select { 
-      background: var(--vscode-input-background);
-      color: var(--vscode-input-foreground);
-      border: 1px solid var(--vscode-input-border);
-      padding: 4px 8px;
-      border-radius: 4px;
-      width: 130px;
-      font-size: 0.9em;
-      font-family: inherit;
-      transition: border-color 0.2s;
-    }
-    input:focus, select:focus {
-      outline: none;
-      border-color: var(--vscode-focusBorder);
-    }
-    
-    .desc { font-size: 0.8em; opacity: 0.65; margin-top: 2px; margin-left: 26px; font-weight: normal; }
-    
-    .obnoxious { 
-      border-left: 4px solid #ff4444;
-      background: linear-gradient(to right, rgba(255,68,68,0.05), transparent);
-    }
-    .obnoxious-active {
-        background: linear-gradient(to right, rgba(255,68,68,0.08), transparent);
-    }
-
-    h2 { 
-      margin-top: 0;
-      margin-bottom: 16px;
-      font-size: 1.5em;
-      font-weight: 400;
-      border-bottom: 1px solid var(--vscode-widget-border);
-      padding-bottom: 8px;
-    }
-    h3 { margin-top: 0; margin-bottom: 12px; font-size: 1.1em; letter-spacing: 0.5px; text-transform: uppercase; opacity: 0.7; }
-    
+    label { display: block; font-size: .85em; font-weight: 600; margin-bottom: 4px; opacity: .9; }
+    .checkbox-label { display: flex; align-items: center; font-weight: 600; font-size: .9em; cursor: pointer; }
+    .checkbox-label input { appearance: none; width: 16px; height: 16px; margin: 0 10px 0 0; border: 1px solid var(--vscode-checkbox-border); background: var(--vscode-checkbox-background); border-radius: 3px; position: relative; cursor: pointer; }
+    .checkbox-label input:checked { background: var(--vscode-checkbox-selectBackground); border-color: var(--vscode-checkbox-selectBorder); }
+    .checkbox-label input:checked::after { content: '✓'; position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 11px; font-weight: bold; }
+    input[type="number"], input[type="text"], select { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 4px 8px; border-radius: 4px; width: 130px; font: inherit; }
+    .desc { font-size: .8em; opacity: .65; margin: 2px 0 0 26px; }
+    .obnoxious { border-left: 4px solid #f44; background: linear-gradient(90deg, rgba(255,68,68,0.05), transparent); }
+    .obnoxious-active { background: linear-gradient(90deg, rgba(255,68,68,0.08), transparent); }
+    h2 { margin: 0 0 16px; font-size: 1.5em; font-weight: 400; border-bottom: 1px solid var(--vscode-widget-border); padding-bottom: 8px; }
+    h3 { margin: 0 0 12px; font-size: 1.1em; text-transform: uppercase; opacity: .7; }
     .flex-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
-    
-    button {
-      background: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-      border: none;
-      padding: 6px 14px;
-      cursor: pointer;
-      border-radius: 4px;
-      font-size: 0.9em;
-      font-weight: 600;
-      transition: background 0.2s;
-    }
-    button:hover { background: var(--vscode-button-hoverBackground); }
-    button.secondary {
-      background: var(--vscode-button-secondaryBackground);
-      color: var(--vscode-button-secondaryForeground);
-    }
-    button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+    button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 6px 14px; cursor: pointer; border-radius: 4px; font: 600 .95em sans-serif; }
+    button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
   </style></head><body>
     <div class="container">
       <h2>Terminal Monitor Settings</h2>
