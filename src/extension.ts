@@ -6,8 +6,10 @@ interface ExecutionData {
 	terminal: vscode.Terminal;
 	commandLine: string;
 	idleNotified: boolean;
+	obnoxiousNotified: boolean;
 	totalNotified: boolean;
 	snoozeUntil: number;
+	forceNextObnoxious?: boolean;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -17,6 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
 	>();
 	let flashInterval: NodeJS.Timeout | undefined;
 	let flashState = false;
+	let currentFlashTarget: vscode.ConfigurationTarget | undefined;
 	let isNotificationShowing = false;
 
 	let statusBarItem: vscode.StatusBarItem;
@@ -47,6 +50,16 @@ export function activate(context: vscode.ExtensionContext) {
 		if (flashInterval) {
 			return;
 		}
+		const config = vscode.workspace.getConfiguration('terminalIdleMonitor');
+		const hasWorkspace = !!(
+			vscode.workspace.workspaceFolders &&
+			vscode.workspace.workspaceFolders.length > 0
+		);
+		currentFlashTarget =
+			config.get<boolean>('obnoxiousPerWindow') && hasWorkspace
+				? vscode.ConfigurationTarget.Workspace
+				: vscode.ConfigurationTarget.Global;
+
 		flashInterval = setInterval(async () => {
 			flashState = !flashState;
 			const customizations = flashState
@@ -59,11 +72,7 @@ export function activate(context: vscode.ExtensionContext) {
 				: {};
 			await vscode.workspace
 				.getConfiguration('workbench')
-				.update(
-					'colorCustomizations',
-					customizations,
-					vscode.ConfigurationTarget.Global,
-				);
+				.update('colorCustomizations', customizations, currentFlashTarget);
 		}, 500);
 	};
 
@@ -71,9 +80,12 @@ export function activate(context: vscode.ExtensionContext) {
 		if (flashInterval) {
 			clearInterval(flashInterval);
 			flashInterval = undefined;
-			await vscode.workspace
-				.getConfiguration('workbench')
-				.update('colorCustomizations', {}, vscode.ConfigurationTarget.Global);
+			if (currentFlashTarget !== undefined) {
+				await vscode.workspace
+					.getConfiguration('workbench')
+					.update('colorCustomizations', {}, currentFlashTarget);
+				currentFlashTarget = undefined;
+			}
 		}
 	};
 
@@ -118,6 +130,9 @@ export function activate(context: vscode.ExtensionContext) {
 							'displayIdleText',
 							'obnoxiousMode',
 							'obnoxiousColor',
+							'obnoxiousModeTime',
+							'obnoxiousSnooze',
+							'obnoxiousPerWindow',
 						];
 						for (const key of keys) {
 							await cfg.update(
@@ -172,14 +187,50 @@ export function activate(context: vscode.ExtensionContext) {
 					? activeData.commandLine.substring(0, 27) + '...'
 					: activeData.commandLine;
 
-			if (
-				!isNotificationShowing &&
-				!activeData.idleNotified &&
-				idle >= (config.get<number>('idleTimeout') || 60)
-			) {
+			const idleTimeout = config.get<number>('idleTimeout') || 60;
+			const obnoxiousTimeout = config.get<number>('obnoxiousModeTime');
+			const isObnoxiousMode = config.get<boolean>('obnoxiousMode');
+
+			const isPastIdle = idle >= idleTimeout;
+			const isPastObnoxious =
+				obnoxiousTimeout !== null &&
+				obnoxiousTimeout !== undefined &&
+				idle >= obnoxiousTimeout;
+
+			let triggerIdleNow = false;
+			let isObnoxious = false;
+
+			if (!isNotificationShowing) {
+				if (!activeData.obnoxiousNotified) {
+					if (isPastObnoxious) {
+						triggerIdleNow = true;
+						isObnoxious = true;
+					} else if (activeData.forceNextObnoxious && isPastIdle) {
+						triggerIdleNow = true;
+						isObnoxious = true;
+					} else if (
+						isObnoxiousMode &&
+						isPastIdle &&
+						!activeData.idleNotified
+					) {
+						triggerIdleNow = true;
+						isObnoxious = true;
+					}
+				}
+
+				if (!triggerIdleNow && !activeData.idleNotified && isPastIdle) {
+					triggerIdleNow = true;
+					isObnoxious = false;
+				}
+			}
+
+			if (triggerIdleNow) {
 				activeData.idleNotified = true;
+				if (isObnoxious) {
+					activeData.obnoxiousNotified = true;
+					activeData.forceNextObnoxious = false;
+				}
 				isNotificationShowing = true;
-				const isObnoxious = config.get<boolean>('obnoxiousMode');
 				if (isObnoxious) {
 					startFlashing(config.get<string>('obnoxiousColor') || '#ff0000');
 				}
@@ -200,11 +251,16 @@ export function activate(context: vscode.ExtensionContext) {
 						if (s === 'Reset Timer') {
 							activeData!.lastActivity = Date.now();
 							activeData!.idleNotified = false;
+							activeData!.obnoxiousNotified = false;
 						} else if (s?.startsWith('Snooze')) {
 							const mins = parseInt(s.match(/\d+/)![0]);
 							activeData!.snoozeUntil = Date.now() + mins * 60000;
 							activeData!.idleNotified = false;
+							activeData!.obnoxiousNotified = false;
 							activeData!.totalNotified = false;
+							if (config.get<boolean>('obnoxiousSnooze')) {
+								activeData!.forceNextObnoxious = true;
+							}
 						}
 					});
 			}
@@ -214,30 +270,36 @@ export function activate(context: vscode.ExtensionContext) {
 				!activeData.totalNotified &&
 				elapsed >= (config.get<number>('totalTimeout') || 300)
 			) {
+				const isObnoxiousTotal =
+					isObnoxiousMode || activeData.forceNextObnoxious;
 				activeData.totalNotified = true;
 				isNotificationShowing = true;
-				const isObnoxious = config.get<boolean>('obnoxiousMode');
-				if (isObnoxious) {
+				if (isObnoxiousTotal) {
 					startFlashing(config.get<string>('obnoxiousColor') || '#ff0000');
+					activeData.forceNextObnoxious = false;
 				}
 				vscode.window
 					.showInformationMessage(
 						`TOTAL: "${cmdSummary}" (${elapsed}s)`,
-						{ modal: isObnoxious },
+						{ modal: isObnoxiousTotal },
 						'Snooze 5m',
 						'Snooze 10m',
 						'Snooze 15m',
 					)
 					.then(async (s) => {
 						isNotificationShowing = false;
-						if (isObnoxious) {
+						if (isObnoxiousTotal) {
 							await stopFlashing();
 						}
 						if (s?.startsWith('Snooze')) {
 							const mins = parseInt(s.match(/\d+/)![0]);
 							activeData!.snoozeUntil = Date.now() + mins * 60000;
 							activeData!.idleNotified = false;
+							activeData!.obnoxiousNotified = false;
 							activeData!.totalNotified = false;
+							if (config.get<boolean>('obnoxiousSnooze')) {
+								activeData!.forceNextObnoxious = true;
+							}
 						}
 					});
 			}
@@ -270,6 +332,7 @@ export function activate(context: vscode.ExtensionContext) {
 				terminal: event.terminal,
 				commandLine: event.execution.commandLine.value || 'Unknown',
 				idleNotified: false,
+				obnoxiousNotified: false,
 				totalNotified: false,
 				snoozeUntil: 0,
 			};
@@ -278,6 +341,7 @@ export function activate(context: vscode.ExtensionContext) {
 				for await (const _ of event.execution.read()) {
 					data.lastActivity = Date.now();
 					data.idleNotified = false;
+					data.obnoxiousNotified = false;
 				}
 			} catch {
 			} finally {
@@ -296,34 +360,78 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
 	const alignment = config.get<string>('statusBarAlignment') || 'Left';
 	return `<!DOCTYPE html><html><head><style>
     body { font-family: sans-serif; padding: 20px; color: var(--vscode-foreground); background-color: var(--vscode-editor-background); }
-    .setting { margin-bottom: 20px; padding: 15px; border: 1px solid var(--vscode-widget-border); border-radius: 4px; }
-    label { display: block; font-weight: bold; margin-bottom: 5px; }
-    input[type="number"], input[type="text"], select { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 5px; width: 120px; }
-    .desc { font-size: 0.9em; opacity: 0.8; margin-top: 5px; }
+    .section { margin-bottom: 20px; padding: 15px; border: 1px solid var(--vscode-widget-border); border-radius: 4px; }
+    .setting-item { margin-bottom: 12px; }
+    .setting-item:last-child { margin-bottom: 0; }
+    label { display: block; font-weight: bold; margin-bottom: 4px; }
+    .checkbox-label { display: flex; align-items: center; font-weight: bold; cursor: pointer; }
+    .checkbox-label input { margin-right: 8px; }
+    input[type="number"], input[type="text"], select { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 4px; width: 120px; }
+    .desc { font-size: 0.85em; opacity: 0.8; margin-top: 2px; margin-left: 24px; }
     .obnoxious { border-left: 5px solid #ff0000; background: rgba(255,0,0,0.05); }
-    h2 { border-bottom: 1px solid var(--vscode-widget-border); padding-bottom: 10px; }
+    h2 { border-bottom: 1px solid var(--vscode-widget-border); padding-bottom: 10px; margin-top: 0; }
+    h3 { margin-top: 0; margin-bottom: 15px; font-size: 1.1em; opacity: 0.9; }
+    .flex-row { display: flex; gap: 20px; flex-wrap: wrap; }
   </style></head><body>
     <h2>Copilot Terminal Monitor Settings</h2>
-    <div class="setting"><label><input type="checkbox" ${config.get('enabled') ? 'checked' : ''} onchange="update('enabled', this.checked)"> Enable Monitoring</label></div>
-    <div class="setting"><label>Idle Timeout (seconds)</label><input type="number" value="${config.get('idleTimeout')}" onchange="update('idleTimeout', parseInt(this.value))"></div>
-    <div class="setting"><label>Total Timeout (seconds)</label><input type="number" value="${config.get('totalTimeout')}" onchange="update('totalTimeout', parseInt(this.value))"></div>
     
-    <div class="setting">
-      <label>Status Bar Alignment</label>
-      <select onchange="update('statusBarAlignment', this.value)">
-        <option value="Left" ${alignment === 'Left' ? 'selected' : ''}>Left Side</option>
-        <option value="Right" ${alignment === 'Right' ? 'selected' : ''}>Right Side</option>
-      </select>
-    </div>
+    <div class="section">
+      <h3>General Settings</h3>
+      <div class="setting-item">
+        <label class="checkbox-label"><input type="checkbox" ${config.get('enabled') ? 'checked' : ''} onchange="update('enabled', this.checked)"> Enable Monitoring</label>
+      </div>
+      
+      <div class="flex-row">
+        <div class="setting-item">
+          <label>Idle Timeout (seconds)</label>
+          <input type="number" value="${config.get('idleTimeout')}" onchange="update('idleTimeout', parseInt(this.value))">
+        </div>
+        <div class="setting-item">
+          <label>Total Timeout (seconds)</label>
+          <input type="number" value="${config.get('totalTimeout')}" onchange="update('totalTimeout', parseInt(this.value))">
+        </div>
+        <div class="setting-item">
+          <label>Status Bar Alignment</label>
+          <select onchange="update('statusBarAlignment', this.value)">
+            <option value="Left" ${alignment === 'Left' ? 'selected' : ''}>Left Side</option>
+            <option value="Right" ${alignment === 'Right' ? 'selected' : ''}>Right Side</option>
+          </select>
+        </div>
+      </div>
 
-    <div class="setting"><label><input type="checkbox" ${config.get('statusBarAlwaysVisible') ? 'checked' : ''} onchange="update('statusBarAlwaysVisible', this.checked)"> Always Show Status Bar</label></div>
-    <div class="setting"><label><input type="checkbox" ${config.get('displayIdleText') ? 'checked' : ''} onchange="update('displayIdleText', this.checked)"> Display "Idle" text</label></div>
+      <div class="setting-item">
+        <label class="checkbox-label"><input type="checkbox" ${config.get('statusBarAlwaysVisible') ? 'checked' : ''} onchange="update('statusBarAlwaysVisible', this.checked)"> Always Show Status Bar</label>
+      </div>
+      <div class="setting-item">
+        <label class="checkbox-label"><input type="checkbox" ${config.get('displayIdleText') ? 'checked' : ''} onchange="update('displayIdleText', this.checked)"> Display "Idle" text</label>
+      </div>
+    </div>
     
-    <div class="setting obnoxious">
-      <label><input type="checkbox" ${config.get('obnoxiousMode') ? 'checked' : ''} onchange="update('obnoxiousMode', this.checked)"> 🚨 OBNOXIOUS MODE</label>
-      <br>
-      <label>Alert Color (Hex)</label>
-      <input type="text" value="${config.get('obnoxiousColor')}" onchange="update('obnoxiousColor', this.value)">
+    <div class="section obnoxious">
+      <label class="checkbox-label"><input type="checkbox" ${config.get('obnoxiousMode') ? 'checked' : ''} onchange="update('obnoxiousMode', this.checked)"> 🚨 OBNOXIOUS MODE</label>
+      
+      <div style="display: ${config.get('obnoxiousMode') ? 'block' : 'none'}; margin-top: 15px; border-top: 1px solid var(--vscode-widget-border); padding-top: 15px;">
+        <div class="flex-row">
+          <div class="setting-item">
+            <label>Alert Color (Hex)</label>
+            <input type="text" value="${config.get('obnoxiousColor')}" onchange="update('obnoxiousColor', this.value)">
+          </div>
+          <div class="setting-item">
+            <label>Obnoxious Mode Time (seconds)</label>
+            <input type="number" placeholder="Idle timeout" value="${config.get('obnoxiousModeTime') || ''}" onchange="update('obnoxiousModeTime', this.value ? parseInt(this.value) : null)">
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <label class="checkbox-label"><input type="checkbox" ${config.get('obnoxiousSnooze') ? 'checked' : ''} onchange="update('obnoxiousSnooze', this.checked)"> Obnoxious Snooze</label>
+          <div class="desc">Snoozing a notification will make the next alert obnoxious.</div>
+        </div>
+        
+        <div class="setting-item">
+          <label class="checkbox-label"><input type="checkbox" ${config.get('obnoxiousPerWindow') ? 'checked' : ''} onchange="update('obnoxiousPerWindow', this.checked)"> Per-Window Obnoxious Mode</label>
+          <div class="desc">Flashing only affects the current window (requires a workspace).</div>
+        </div>
+      </div>
     </div>
 
     <div style="margin-top: 30px;">

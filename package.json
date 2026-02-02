@@ -72,6 +72,24 @@
           "type": "string",
           "default": "#ff0000",
           "description": "The color to use for flashing the UI in obnoxious mode."
+        },
+        "terminalIdleMonitor.obnoxiousModeTime": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "description": "The time in seconds when obnoxious mode triggers. Defaults to blank which uses the idle timeout."
+        },
+        "terminalIdleMonitor.obnoxiousSnooze": {
+          "type": "boolean",
+          "default": false,
+          "description": "If enabled, snoozing a notification will make the next alert obnoxious."
+        },
+        "terminalIdleMonitor.obnoxiousPerWindow": {
+          "type": "boolean",
+          "default": false,
+          "description": "If enabled, obnoxious flashing will only affect the current window (requires a workspace to be open)."
         }
       }
     }
