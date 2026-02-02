@@ -133,6 +133,7 @@ export function activate(context: vscode.ExtensionContext) {
 							'obnoxiousModeTime',
 							'obnoxiousSnooze',
 							'obnoxiousPerWindow',
+							'enableExclusions',
 							'excludePatterns',
 						];
 						for (const key of keys) {
@@ -328,21 +329,25 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.window.onDidStartTerminalShellExecution(async (event) => {
 			const config = vscode.workspace.getConfiguration('terminalIdleMonitor');
-			const excludePatterns = config.get<string>('excludePatterns') || '';
-			if (excludePatterns) {
-				const patterns = excludePatterns.split(',').map((p) => p.trim());
-				const terminalName = event.terminal.name;
-				const isExcluded = patterns.some((p) => {
-					const regex = new RegExp(
-						'^' +
-							p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*') +
-							'$',
-						'i',
-					);
-					return regex.test(terminalName);
-				});
-				if (isExcluded) {
-					return;
+			if (config.get<boolean>('enableExclusions')) {
+				const excludePatterns = config.get<string>('excludePatterns') || '';
+				if (excludePatterns) {
+					const patterns = excludePatterns.split(',').map((p) => p.trim());
+					const terminalName = event.terminal.name;
+					const isExcluded = patterns.some((p) => {
+						const regex = new RegExp(
+							'^' +
+								p
+									.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+									.replace(/\\\*/g, '.*') +
+								'$',
+							'i',
+						);
+						return regex.test(terminalName);
+					});
+					if (isExcluded) {
+						return;
+					}
 				}
 			}
 
@@ -435,9 +440,11 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
         </div>
 
         <div class="setting-item">
-          <label>Exclude Terminals (comma separated)</label>
-          <input type="text" style="width: 100%; max-width: 400px;" placeholder="e.g. npm: watch*, debug" value="${config.get('excludePatterns') || ''}" onchange="update('excludePatterns', this.value)">
-          <div class="desc" style="margin-left:0">Matching terminal titles will not be monitored (* supported)</div>
+          <label class="checkbox-label"><input type="checkbox" ${config.get('enableExclusions') ? 'checked' : ''} onchange="update('enableExclusions', this.checked)"> Exclude Terminals</label>
+          <div style="display: ${config.get('enableExclusions') ? 'block' : 'none'}; margin: 10px 0 0 26px;">
+            <input type="text" style="width: 100%; max-width: 400px;" placeholder="e.g. npm: watch*, debug" value="${config.get('excludePatterns') || ''}" onchange="update('excludePatterns', this.value)">
+            <div class="desc" style="margin-left:0">Comma-separated titles to ignore (* supported)</div>
+          </div>
         </div>
       </div>
       

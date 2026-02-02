@@ -83,13 +83,18 @@
         },
         "terminalIdleMonitor.obnoxiousSnooze": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "If enabled, snoozing a notification will make the next alert obnoxious."
         },
         "terminalIdleMonitor.obnoxiousPerWindow": {
           "type": "boolean",
           "default": false,
           "description": "If enabled, obnoxious flashing will only affect the current window (requires a workspace to be open)."
+        },
+        "terminalIdleMonitor.enableExclusions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable terminal title exclusions."
         },
         "terminalIdleMonitor.excludePatterns": {
           "type": "string",
