@@ -2,8 +2,20 @@
   "name": "copilot-terminal-monitor",
   "displayName": "Copilot Terminal Monitor",
   "description": "Monitors terminal commands and notifies if no output is received for a specified duration.",
-  "version": "1.1.0",
-  "publisher": "GH-Copilot",
+  "version": "1.2.5",
+  "publisher": "LunarWerx",
+  "author": {
+    "name": "LunarWerx",
+    "url": "https://github.com/LunarWerx"
+  },
+  "homepage": "https://github.com/LunarWerx/copilot-terminal-monitor",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LunarWerx/copilot-terminal-monitor"
+  },
+  "bugs": {
+    "url": "https://github.com/LunarWerx/copilot-terminal-monitor/issues"
+  },
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.108.1"
@@ -41,8 +53,8 @@
         },
         "terminalIdleMonitor.totalTimeout": {
           "type": "number",
-          "default": 300,
-          "description": "Time in seconds before notifying about total execution time."
+          "default": 5,
+          "description": "Time in minutes before notifying about total execution time."
         },
         "terminalIdleMonitor.statusBarAlwaysVisible": {
           "type": "boolean",
@@ -100,6 +112,36 @@
           "type": "string",
           "default": "",
           "description": "Comma-separated list of terminal titles to exclude from monitoring (e.g., 'npm: watch*', 'debug')."
+        },
+        "terminalIdleMonitor.onlyMonitorActive": {
+          "type": "boolean",
+          "default": true,
+          "description": "Only monitor the terminal currently visible. Background terminals will be ignored."
+        },
+        "terminalIdleMonitor.showTerminateButton": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a button to terminate/close the terminal in alerts."
+        },
+        "terminalIdleMonitor.useSigInt": {
+          "type": "boolean",
+          "default": true,
+          "description": "When terminating, send Ctrl+C (SIGINT) instead of closing the terminal window."
+        },
+        "terminalIdleMonitor.autoTerminateEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically terminate idle terminals after a specific duration."
+        },
+        "terminalIdleMonitor.autoTerminateTimeout": {
+          "type": "number",
+          "default": 10,
+          "description": "Time in minutes before an idle terminal is automatically terminated."
+        },
+        "terminalIdleMonitor.hardTerminateRetries": {
+          "type": "number",
+          "default": 3,
+          "description": "Number of Ctrl+C retries before a hard termination (closing the terminal) occurs. Only used if Gentle Termination is enabled."
         }
       }
     }
