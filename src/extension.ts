@@ -359,83 +359,195 @@ export function activate(context: vscode.ExtensionContext) {
 function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
 	const alignment = config.get<string>('statusBarAlignment') || 'Left';
 	return `<!DOCTYPE html><html><head><style>
-    body { font-family: sans-serif; padding: 20px; color: var(--vscode-foreground); background-color: var(--vscode-editor-background); }
-    .section { margin-bottom: 20px; padding: 15px; border: 1px solid var(--vscode-widget-border); border-radius: 4px; }
-    .setting-item { margin-bottom: 12px; }
+    :root {
+      --spacing: 16px;
+      --radius: 8px;
+    }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 16px;
+      color: var(--vscode-foreground);
+      background-color: var(--vscode-editor-background);
+      line-height: 1.4;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    .section { 
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      background-color: var(--vscode-sideBar-background);
+      border: 1px solid var(--vscode-widget-border);
+      border-radius: var(--radius);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .setting-item { margin-bottom: 10px; }
     .setting-item:last-child { margin-bottom: 0; }
-    label { display: block; font-weight: bold; margin-bottom: 4px; }
-    .checkbox-label { display: flex; align-items: center; font-weight: bold; cursor: pointer; }
-    .checkbox-label input { margin-right: 8px; }
-    input[type="number"], input[type="text"], select { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 4px; width: 120px; }
-    .desc { font-size: 0.85em; opacity: 0.8; margin-top: 2px; margin-left: 24px; }
-    .obnoxious { border-left: 5px solid #ff0000; background: rgba(255,0,0,0.05); }
-    h2 { border-bottom: 1px solid var(--vscode-widget-border); padding-bottom: 10px; margin-top: 0; }
-    h3 { margin-top: 0; margin-bottom: 15px; font-size: 1.1em; opacity: 0.9; }
-    .flex-row { display: flex; gap: 20px; flex-wrap: wrap; }
-  </style></head><body>
-    <h2>Copilot Terminal Monitor Settings</h2>
     
-    <div class="section">
-      <h3>General Settings</h3>
-      <div class="setting-item">
-        <label class="checkbox-label"><input type="checkbox" ${config.get('enabled') ? 'checked' : ''} onchange="update('enabled', this.checked)"> Enable Monitoring</label>
-      </div>
-      
-      <div class="flex-row">
-        <div class="setting-item">
-          <label>Idle Timeout (seconds)</label>
-          <input type="number" value="${config.get('idleTimeout')}" onchange="update('idleTimeout', parseInt(this.value))">
-        </div>
-        <div class="setting-item">
-          <label>Total Timeout (seconds)</label>
-          <input type="number" value="${config.get('totalTimeout')}" onchange="update('totalTimeout', parseInt(this.value))">
-        </div>
-        <div class="setting-item">
-          <label>Status Bar Alignment</label>
-          <select onchange="update('statusBarAlignment', this.value)">
-            <option value="Left" ${alignment === 'Left' ? 'selected' : ''}>Left Side</option>
-            <option value="Right" ${alignment === 'Right' ? 'selected' : ''}>Right Side</option>
-          </select>
-        </div>
-      </div>
+    label { display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 4px; opacity: 0.9; }
+    .checkbox-label { 
+      display: flex;
+      align-items: center;
+      font-weight: 600;
+      font-size: 0.9em;
+      cursor: pointer;
+      user-select: none;
+      transition: opacity 0.2s;
+    }
+    .checkbox-label:hover { opacity: 0.8; }
+    .checkbox-label input { 
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      margin-right: 10px;
+      border: 1px solid var(--vscode-checkbox-border);
+      background: var(--vscode-checkbox-background);
+      border-radius: 3px;
+      position: relative;
+      cursor: pointer;
+    }
+    .checkbox-label input:checked { 
+      background: var(--vscode-checkbox-selectBackground);
+      border-color: var(--vscode-checkbox-selectBorder);
+    }
+    .checkbox-label input:checked::after {
+      content: '✓';
+      position: absolute;
+      top: 45%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: bold;
+    }
 
-      <div class="setting-item">
-        <label class="checkbox-label"><input type="checkbox" ${config.get('statusBarAlwaysVisible') ? 'checked' : ''} onchange="update('statusBarAlwaysVisible', this.checked)"> Always Show Status Bar</label>
-      </div>
-      <div class="setting-item">
-        <label class="checkbox-label"><input type="checkbox" ${config.get('displayIdleText') ? 'checked' : ''} onchange="update('displayIdleText', this.checked)"> Display "Idle" text</label>
-      </div>
-    </div>
+    input[type="number"], input[type="text"], select { 
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      padding: 4px 8px;
+      border-radius: 4px;
+      width: 130px;
+      font-size: 0.9em;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--vscode-focusBorder);
+    }
     
-    <div class="section obnoxious">
-      <label class="checkbox-label"><input type="checkbox" ${config.get('obnoxiousMode') ? 'checked' : ''} onchange="update('obnoxiousMode', this.checked)"> 🚨 OBNOXIOUS MODE</label>
+    .desc { font-size: 0.8em; opacity: 0.65; margin-top: 2px; margin-left: 26px; font-weight: normal; }
+    
+    .obnoxious { 
+      border-left: 4px solid #ff4444;
+      background: linear-gradient(to right, rgba(255,68,68,0.05), transparent);
+    }
+    .obnoxious-active {
+        background: linear-gradient(to right, rgba(255,68,68,0.08), transparent);
+    }
+
+    h2 { 
+      margin-top: 0;
+      margin-bottom: 16px;
+      font-size: 1.5em;
+      font-weight: 400;
+      border-bottom: 1px solid var(--vscode-widget-border);
+      padding-bottom: 8px;
+    }
+    h3 { margin-top: 0; margin-bottom: 12px; font-size: 1.1em; letter-spacing: 0.5px; text-transform: uppercase; opacity: 0.7; }
+    
+    .flex-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+    
+    button {
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      padding: 6px 14px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 0.9em;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    button:hover { background: var(--vscode-button-hoverBackground); }
+    button.secondary {
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+    }
+    button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  </style></head><body>
+    <div class="container">
+      <h2>Terminal Monitor Settings</h2>
       
-      <div style="display: ${config.get('obnoxiousMode') ? 'block' : 'none'}; margin-top: 15px; border-top: 1px solid var(--vscode-widget-border); padding-top: 15px;">
+      <div class="section">
+        <h3>General Monitoring</h3>
+        <div class="setting-item">
+          <label class="checkbox-label"><input type="checkbox" ${config.get('enabled') ? 'checked' : ''} onchange="update('enabled', this.checked)"> Enable Terminal Monitoring</label>
+        </div>
+        
         <div class="flex-row">
           <div class="setting-item">
-            <label>Alert Color (Hex)</label>
-            <input type="text" value="${config.get('obnoxiousColor')}" onchange="update('obnoxiousColor', this.value)">
+            <label>Idle Time Threshold</label>
+            <input type="number" value="${config.get('idleTimeout')}" onchange="update('idleTimeout', parseInt(this.value))">
+            <div class="desc" style="margin-left:0">Seconds until alert</div>
           </div>
           <div class="setting-item">
-            <label>Obnoxious Mode Time (seconds)</label>
-            <input type="number" placeholder="Idle timeout" value="${config.get('obnoxiousModeTime') || ''}" onchange="update('obnoxiousModeTime', this.value ? parseInt(this.value) : null)">
+            <label>Total Running Time</label>
+            <input type="number" value="${config.get('totalTimeout')}" onchange="update('totalTimeout', parseInt(this.value))">
+            <div class="desc" style="margin-left:0">Seconds until alert</div>
+          </div>
+          <div class="setting-item">
+            <label>Status Bar Position</label>
+            <select onchange="update('statusBarAlignment', this.value)">
+              <option value="Left" ${alignment === 'Left' ? 'selected' : ''}>Left Side</option>
+              <option value="Right" ${alignment === 'Right' ? 'selected' : ''}>Right Side</option>
+            </select>
           </div>
         </div>
-        
+
         <div class="setting-item">
-          <label class="checkbox-label"><input type="checkbox" ${config.get('obnoxiousSnooze') ? 'checked' : ''} onchange="update('obnoxiousSnooze', this.checked)"> Obnoxious Snooze</label>
-          <div class="desc">Snoozing a notification will make the next alert obnoxious.</div>
+          <label class="checkbox-label"><input type="checkbox" ${config.get('statusBarAlwaysVisible') ? 'checked' : ''} onchange="update('statusBarAlwaysVisible', this.checked)"> Keep Status Bar Visible</label>
         </div>
-        
         <div class="setting-item">
-          <label class="checkbox-label"><input type="checkbox" ${config.get('obnoxiousPerWindow') ? 'checked' : ''} onchange="update('obnoxiousPerWindow', this.checked)"> Per-Window Obnoxious Mode</label>
-          <div class="desc">Flashing only affects the current window (requires a workspace).</div>
+          <label class="checkbox-label"><input type="checkbox" ${config.get('displayIdleText') ? 'checked' : ''} onchange="update('displayIdleText', this.checked)"> Show "Idle" Status</label>
         </div>
       </div>
-    </div>
+      
+      <div class="section obnoxious ${config.get('obnoxiousMode') ? 'obnoxious-active' : ''}">
+        <h3>Alert Intensity</h3>
+        <div class="setting-item">
+          <label class="checkbox-label" style="font-size: 1em; color: #ff4444;">
+            <input type="checkbox" ${config.get('obnoxiousMode') ? 'checked' : ''} onchange="update('obnoxiousMode', this.checked)"> 
+            🚨 OBNOXIOUS MODE
+          </label>
+        </div>
+        
+        <div style="display: ${config.get('obnoxiousMode') ? 'block' : 'none'}; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,68,68,0.2);">
+          <div class="flex-row">
+            <div class="setting-item">
+              <label>Flash Color (Hex)</label>
+              <input type="text" value="${config.get('obnoxiousColor')}" onchange="update('obnoxiousColor', this.value)">
+            </div>
+            <div class="setting-item">
+              <label>Intensify After (seconds)</label>
+              <input type="number" placeholder="At idle" value="${config.get('obnoxiousModeTime') || ''}" onchange="update('obnoxiousModeTime', this.value ? parseInt(this.value) : null)">
+            </div>
+          </div>
+          
+          <div class="setting-item">
+            <label class="checkbox-label"><input type="checkbox" ${config.get('obnoxiousSnooze') ? 'checked' : ''} onchange="update('obnoxiousSnooze', this.checked)"> Escalating Snooze</label>
+            <div class="desc">Next alert becomes obnoxious after snoozing.</div>
+          </div>
+          
+          <div class="setting-item">
+            <label class="checkbox-label"><input type="checkbox" ${config.get('obnoxiousPerWindow') ? 'checked' : ''} onchange="update('obnoxiousPerWindow', this.checked)"> Isolate to Current Window</label>
+            <div class="desc">Only flash active project window.</div>
+          </div>
+        </div>
+      </div>
 
-    <div style="margin-top: 30px;">
-      <button onclick="reset()" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; padding: 8px 15px; cursor: pointer; border-radius: 2px;">Reset to Defaults</button>
+      <div style="margin-top: 24px; display: flex; justify-content: flex-end;">
+        <button class="secondary" onclick="reset()">Reset All to Defaults</button>
+      </div>
     </div>
 
     <script>
