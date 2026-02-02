@@ -1,0 +1,105 @@
+{
+  "name": "copilot-terminal-monitor",
+  "displayName": "Copilot Terminal Monitor",
+  "description": "Monitors terminal commands and notifies if no output is received for a specified duration.",
+  "version": "1.0.0",
+  "publisher": "GH-Copilot",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.108.1"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "terminal-idle-monitor.setTimeout",
+        "title": "Set Terminal Idle Timeout"
+      },
+      {
+        "command": "terminal-idle-monitor.openSettings",
+        "title": "Open Settings"
+      }
+    ],
+    "configuration": {
+      "title": "Terminal Idle Monitor",
+      "properties": {
+        "terminalIdleMonitor.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable terminal idle monitoring."
+        },
+        "terminalIdleMonitor.idleTimeout": {
+          "type": "number",
+          "default": 60,
+          "description": "Time in seconds before notifying about an idle terminal."
+        },
+        "terminalIdleMonitor.totalTimeout": {
+          "type": "number",
+          "default": 300,
+          "description": "Time in seconds before notifying about total execution time."
+        },
+        "terminalIdleMonitor.statusBarAlwaysVisible": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep the status bar item visible even when no command is running."
+        },
+        "terminalIdleMonitor.displayIdleText": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show 'Idle' text in the status bar when no command is running."
+        },
+        "terminalIdleMonitor.statusBarAlignment": {
+          "type": "string",
+          "enum": [
+            "Left",
+            "Right"
+          ],
+          "default": "Right",
+          "description": "The alignment of the status bar item."
+        },
+        "terminalIdleMonitor.obnoxiousMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable high-intensity alerts (modal popups and flashing UI)."
+        },
+        "terminalIdleMonitor.obnoxiousColor": {
+          "type": "string",
+          "default": "#ff0000",
+          "description": "The color to use for flashing the UI in obnoxious mode."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.108.1",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.52.0",
+    "eslint": "^9.39.2",
+    "esbuild": "^0.27.2",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
