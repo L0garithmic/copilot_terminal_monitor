@@ -133,6 +133,7 @@ export function activate(context: vscode.ExtensionContext) {
 							'obnoxiousModeTime',
 							'obnoxiousSnooze',
 							'obnoxiousPerWindow',
+							'excludePatterns',
 						];
 						for (const key of keys) {
 							await cfg.update(
@@ -326,6 +327,25 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.window.onDidStartTerminalShellExecution(async (event) => {
+			const config = vscode.workspace.getConfiguration('terminalIdleMonitor');
+			const excludePatterns = config.get<string>('excludePatterns') || '';
+			if (excludePatterns) {
+				const patterns = excludePatterns.split(',').map((p) => p.trim());
+				const terminalName = event.terminal.name;
+				const isExcluded = patterns.some((p) => {
+					const regex = new RegExp(
+						'^' +
+							p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*') +
+							'$',
+						'i',
+					);
+					return regex.test(terminalName);
+				});
+				if (isExcluded) {
+					return;
+				}
+			}
+
 			const data: ExecutionData = {
 				startTime: Date.now(),
 				lastActivity: Date.now(),
@@ -412,6 +432,12 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
         </div>
         <div class="setting-item">
           <label class="checkbox-label"><input type="checkbox" ${config.get('displayIdleText') ? 'checked' : ''} onchange="update('displayIdleText', this.checked)"> Show "Idle" Status</label>
+        </div>
+
+        <div class="setting-item">
+          <label>Exclude Terminals (comma separated)</label>
+          <input type="text" style="width: 100%; max-width: 400px;" placeholder="e.g. npm: watch*, debug" value="${config.get('excludePatterns') || ''}" onchange="update('excludePatterns', this.value)">
+          <div class="desc" style="margin-left:0">Matching terminal titles will not be monitored (* supported)</div>
         </div>
       </div>
       

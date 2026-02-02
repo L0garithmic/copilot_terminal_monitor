@@ -2,7 +2,7 @@
   "name": "copilot-terminal-monitor",
   "displayName": "Copilot Terminal Monitor",
   "description": "Monitors terminal commands and notifies if no output is received for a specified duration.",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "publisher": "GH-Copilot",
   "icon": "icon.png",
   "engines": {
@@ -90,6 +90,11 @@
           "type": "boolean",
           "default": false,
           "description": "If enabled, obnoxious flashing will only affect the current window (requires a workspace to be open)."
+        },
+        "terminalIdleMonitor.excludePatterns": {
+          "type": "string",
+          "default": "",
+          "description": "Comma-separated list of terminal titles to exclude from monitoring (e.g., 'npm: watch*', 'debug')."
         }
       }
     }
