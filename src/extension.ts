@@ -50,11 +50,19 @@ export function activate(context: vscode.ExtensionContext) {
 				? vscode.StatusBarAlignment.Left
 				: vscode.StatusBarAlignment.Right;
 		statusBarItem = vscode.window.createStatusBarItem(alignment, 100);
-		statusBarItem.command = 'terminal-idle-monitor.openSettings';
-		const icon = config.get<boolean>('autoTerminateEnabled')
-			? '$(chat-sparkle-warning)'
-			: '$(terminal-cmd)';
+		statusBarItem.command = 'terminal-idle-monitor.showMenu';
+
+		const inspect = config.inspect<boolean>('autoTerminateEnabled');
+		const isGlobalDestructive = inspect?.globalValue === true;
+		const isDestructive = config.get<boolean>('autoTerminateEnabled');
+
+		let icon = '$(terminal-cmd)';
+		if (isDestructive) {
+			icon = isGlobalDestructive ? '$(warning)' : '$(chat-sparkle-warning)';
+		}
+
 		statusBarItem.text = icon;
+		statusBarItem.tooltip = `Terminal Idle Monitor${isDestructive ? ' (Destructive' + (isGlobalDestructive ? ' - Global' : ' - Workspace') + ')' : ''}`;
 		if (
 			config.get<boolean>('enabled') &&
 			config.get<boolean>('statusBarAlwaysVisible')
@@ -110,6 +118,70 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand(
+			'terminal-idle-monitor.showMenu',
+			async () => {
+				const config = vscode.workspace.getConfiguration('terminalIdleMonitor');
+				const inspect = config.inspect<boolean>('autoTerminateEnabled');
+				const hasWorkspace =
+					vscode.workspace.workspaceFolders &&
+					vscode.workspace.workspaceFolders.length > 0;
+
+				const globalValue = inspect?.globalValue ?? false;
+				const workspaceValue = inspect?.workspaceValue ?? false;
+
+				const options: vscode.QuickPickItem[] = [];
+
+				if (hasWorkspace) {
+					options.push({
+						label: workspaceValue
+							? '$(circle-slash) Disable Destructive Mode (Workspace)'
+							: '$(check) Enable Destructive Mode (Workspace)',
+						description: 'Toggle auto-termination for this workspace only',
+						detail: `Currently ${workspaceValue ? 'ENABLED' : 'DISABLED'} in workspace`,
+					});
+				}
+
+				options.push({
+					label: globalValue
+						? '$(circle-slash) Disable Destructive Mode (Global)'
+						: '$(check) Enable Destructive Mode (Global)',
+					description: 'Toggle auto-termination for all windows',
+					detail: `Currently ${globalValue ? 'ENABLED' : 'DISABLED'} globally`,
+				});
+
+				options.push({
+					label: '$(settings-gear) Open Settings',
+					description: 'Configure monitor and alerts',
+				});
+
+				const selection = await vscode.window.showQuickPick(options, {
+					placeHolder: 'Terminal Idle Monitor',
+				});
+
+				if (selection) {
+					if (selection.label.includes('Open Settings')) {
+						vscode.commands.executeCommand(
+							'terminal-idle-monitor.openSettings',
+						);
+					} else {
+						const isWorkspaceToggle = selection.label.includes('(Workspace)');
+						const newValue = isWorkspaceToggle ? !workspaceValue : !globalValue;
+						const target = isWorkspaceToggle
+							? vscode.ConfigurationTarget.Workspace
+							: vscode.ConfigurationTarget.Global;
+
+						await config.update('autoTerminateEnabled', newValue, target);
+
+						vscode.window.showInformationMessage(
+							`Destructive mode ${newValue ? 'enabled' : 'disabled'} ${
+								isWorkspaceToggle ? 'for this workspace' : 'globally'
+							}.`,
+						);
+					}
+				}
+			},
+		),
+		vscode.commands.registerCommand(
 			'terminal-idle-monitor.openSettings',
 			() => {
 				const panel = vscode.window.createWebviewPanel(
@@ -123,13 +195,16 @@ export function activate(context: vscode.ExtensionContext) {
 				);
 				panel.webview.onDidReceiveMessage(async (message) => {
 					if (message.command === 'update') {
+						const hasWorkspace =
+							vscode.workspace.workspaceFolders &&
+							vscode.workspace.workspaceFolders.length > 0;
+						const target = hasWorkspace
+							? vscode.ConfigurationTarget.Workspace
+							: vscode.ConfigurationTarget.Global;
+
 						await vscode.workspace
 							.getConfiguration('terminalIdleMonitor')
-							.update(
-								message.key,
-								message.value,
-								vscode.ConfigurationTarget.Global,
-							);
+							.update(message.key, message.value, target);
 						panel.webview.html = getSettingsHtml(
 							vscode.workspace.getConfiguration('terminalIdleMonitor'),
 						);
@@ -444,6 +519,14 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.onDidEndTerminalShellExecution((e) =>
 			activeExecutions.delete(e.execution),
 		),
+	);
+
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration('terminalIdleMonitor')) {
+				createStatusBar();
+			}
+		}),
 	);
 }
 

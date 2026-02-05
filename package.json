@@ -36,6 +36,10 @@
       {
         "command": "terminal-idle-monitor.openSettings",
         "title": "Open Settings"
+      },
+      {
+        "command": "terminal-idle-monitor.showMenu",
+        "title": "Show Terminal Idle Monitor Menu"
       }
     ],
     "configuration": {
