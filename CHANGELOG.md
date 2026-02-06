@@ -1,6 +1,18 @@
 # Changelog
 
 All notable changes to the "terminal-idle-monitor" extension will be documented in this file.
+
+## [1.2.6] - 2026-02-05
+
+### Added
+- **Quick Menu**: Clicking the status bar icon now opens a menu to toggle Destructive Mode or open Settings.
+- **Workspace-Specific Destructive Mode**: Toggle Auto-Terminate for just the current workspace instead of globally.
+- **Visual Indicators**: Status bar icon now distinguishes between Global (`$(warning)`) and Workspace (`$(chat-sparkle-warning)`) destructive modes.
+
+### Changed
+- **Settings Default**: The Settings UI now updates Workspace configuration by default if a workspace is open, allowing for easier project-specific tuning.
+- **Dynamic Feedback**: UI updates immediately when configuration changes are made through any interface.
+
 ## [1.2.5] - 2026-02-02
 
 ### Changed
