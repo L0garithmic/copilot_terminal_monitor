@@ -1,6 +1,18 @@
 # Terminal Idle Monitor
 
-Keep track of your terminal commands and get notified when things get stuck or run for too long.
+[![Version](https://img.shields.io/badge/version-1.3.2-blue.svg)](https://marketplace.visualstudio.com/items?itemName=LunarWerx.copilot-suite)
+[![VS Code](https://img.shields.io/badge/VS%20Code-1.100.0+-007ACC.svg)](https://code.visualstudio.com/)
+
+### Recommended Tools
+
+<a href="https://marketplace.visualstudio.com/items?itemName=LunarWerx.saydeploy"><img src="https://res.cloudinary.com/dicsgc72e/image/upload/h_120,q_100/v1770458415/saydeploy_badge_txzvmj.png" height="33" alt="SayDeploy"></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=LunarWerx.copilot-suite"><img src="https://res.cloudinary.com/dicsgc72e/image/upload/h_120,q_100/v1763756097/ai_suite_badge_ifasdy.png" height="33" alt="CopSuite"></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=LunarWerx.copilot-terminal-monitor"><img src="https://res.cloudinary.com/dicsgc72e/image/upload/h_120,q_100/v1770459131/tmonitor_badge_rfsgvr.png" height="33" alt="TerminalMonitor"></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=LunarWerx.frameref-mcp"><img src="https://res.cloudinary.com/dicsgc72e/image/upload/h_120,q_100/v1763756097/frame_ref_badge_l4znt6.png" height="33" alt="FrameRef"></a>
+
+### Keep track of your terminal commands
+
+and get notified when things get stuck or run for too long.
 
 ## Features
 
