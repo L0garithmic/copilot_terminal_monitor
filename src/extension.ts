@@ -24,6 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
 	let isNotificationShowing = false;
 
 	let statusBarItem: vscode.StatusBarItem;
+	let settingsPanel: vscode.WebviewPanel | undefined;
 
 	const terminateExecution = async (data: ExecutionData) => {
 		const config = vscode.workspace.getConfiguration('terminalIdleMonitor');
@@ -38,6 +39,39 @@ export function activate(context: vscode.ExtensionContext) {
 		} else {
 			data.terminal.dispose();
 		}
+	};
+
+	const handleExcludeAction = async (data: ExecutionData) => {
+		const config = vscode.workspace.getConfiguration('terminalIdleMonitor');
+		const name = data.terminal.name;
+		const currentExclusions = config.get<string>('excludePatterns') || '';
+		const patterns = currentExclusions
+			.split(',')
+			.map((p) => p.trim())
+			.filter((p) => p);
+		if (!patterns.includes(name)) {
+			patterns.push(name);
+			await config.update(
+				'excludePatterns',
+				patterns.join(', '),
+				vscode.ConfigurationTarget.Global,
+			);
+			await config.update(
+				'enableExclusions',
+				true,
+				vscode.ConfigurationTarget.Global,
+			);
+		}
+
+		for (const [execution, execData] of activeExecutions.entries()) {
+			if (execData === data) {
+				activeExecutions.delete(execution);
+				break;
+			}
+		}
+		vscode.window.showInformationMessage(
+			`Excluded terminal "${name}" from monitoring.`,
+		);
 	};
 
 	const createStatusBar = () => {
@@ -128,6 +162,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 				const globalValue = inspect?.globalValue ?? false;
 				const workspaceValue = inspect?.workspaceValue ?? false;
+				const activeTerminal = vscode.window.activeTerminal;
 
 				const options: vscode.QuickPickItem[] = [];
 
@@ -136,8 +171,7 @@ export function activate(context: vscode.ExtensionContext) {
 						label: workspaceValue
 							? '$(circle-slash) Disable Destructive Mode (Workspace)'
 							: '$(check) Enable Destructive Mode (Workspace)',
-						description: 'Toggle auto-termination for this workspace only',
-						detail: `Currently ${workspaceValue ? 'ENABLED' : 'DISABLED'} in workspace`,
+						description: `Currently ${workspaceValue ? 'ENABLED' : 'DISABLED'} in workspace`,
 					});
 				}
 
@@ -145,9 +179,15 @@ export function activate(context: vscode.ExtensionContext) {
 					label: globalValue
 						? '$(circle-slash) Disable Destructive Mode (Global)'
 						: '$(check) Enable Destructive Mode (Global)',
-					description: 'Toggle auto-termination for all windows',
-					detail: `Currently ${globalValue ? 'ENABLED' : 'DISABLED'} globally`,
+					description: `Currently ${globalValue ? 'ENABLED' : 'DISABLED'} globally`,
 				});
+
+				if (activeTerminal) {
+					options.push({
+						label: '$(exclude) Exclude Current Terminal',
+						description: `Stop monitoring "${activeTerminal.name}"`,
+					});
+				}
 
 				options.push({
 					label: '$(settings-gear) Open Settings',
@@ -163,6 +203,38 @@ export function activate(context: vscode.ExtensionContext) {
 						vscode.commands.executeCommand(
 							'terminal-idle-monitor.openSettings',
 						);
+					} else if (selection.label.includes('Exclude Current Terminal')) {
+						const activeExecution = Array.from(activeExecutions.values()).find(
+							(d) => d.terminal === activeTerminal,
+						);
+						if (activeExecution) {
+							await handleExcludeAction(activeExecution);
+						} else if (activeTerminal) {
+							// Fallback if no execution data but terminal exists
+							const name = activeTerminal.name;
+							const currentExclusions =
+								config.get<string>('excludePatterns') || '';
+							const patterns = currentExclusions
+								.split(',')
+								.map((p) => p.trim())
+								.filter((p) => p);
+							if (!patterns.includes(name)) {
+								patterns.push(name);
+								await config.update(
+									'excludePatterns',
+									patterns.join(', '),
+									vscode.ConfigurationTarget.Global,
+								);
+								await config.update(
+									'enableExclusions',
+									true,
+									vscode.ConfigurationTarget.Global,
+								);
+								vscode.window.showInformationMessage(
+									`Excluded terminal "${name}" from monitoring.`,
+								);
+							}
+						}
 					} else {
 						const isWorkspaceToggle = selection.label.includes('(Workspace)');
 						const newValue = isWorkspaceToggle ? !workspaceValue : !globalValue;
@@ -184,30 +256,43 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			'terminal-idle-monitor.openSettings',
 			() => {
-				const panel = vscode.window.createWebviewPanel(
+				if (settingsPanel) {
+					settingsPanel.reveal();
+					return;
+				}
+				settingsPanel = vscode.window.createWebviewPanel(
 					'terminalIdleMonitorSettings',
 					'Copilot Terminal Monitor Settings',
 					vscode.ViewColumn.One,
 					{ enableScripts: true },
 				);
-				panel.webview.html = getSettingsHtml(
+				settingsPanel.webview.html = getSettingsHtml(
 					vscode.workspace.getConfiguration('terminalIdleMonitor'),
 				);
-				panel.webview.onDidReceiveMessage(async (message) => {
+				settingsPanel.webview.onDidReceiveMessage(async (message) => {
 					if (message.command === 'update') {
 						const hasWorkspace =
 							vscode.workspace.workspaceFolders &&
 							vscode.workspace.workspaceFolders.length > 0;
-						const target = hasWorkspace
+						let target = hasWorkspace
 							? vscode.ConfigurationTarget.Workspace
 							: vscode.ConfigurationTarget.Global;
+
+						if (message.target === 'global') {
+							target = vscode.ConfigurationTarget.Global;
+						} else if (message.target === 'workspace') {
+							target = vscode.ConfigurationTarget.Workspace;
+						}
 
 						await vscode.workspace
 							.getConfiguration('terminalIdleMonitor')
 							.update(message.key, message.value, target);
-						panel.webview.html = getSettingsHtml(
-							vscode.workspace.getConfiguration('terminalIdleMonitor'),
-						);
+
+						if (settingsPanel) {
+							settingsPanel.webview.html = getSettingsHtml(
+								vscode.workspace.getConfiguration('terminalIdleMonitor'),
+							);
+						}
 						if (
 							message.key === 'statusBarAlignment' ||
 							message.key === 'autoTerminateEnabled'
@@ -256,13 +341,36 @@ export function activate(context: vscode.ExtensionContext) {
 								// Workspace update might fail if no workspace is open
 							}
 						}
-						panel.webview.html = getSettingsHtml(
-							vscode.workspace.getConfiguration('terminalIdleMonitor'),
-						);
+						if (settingsPanel) {
+							settingsPanel.webview.html = getSettingsHtml(
+								vscode.workspace.getConfiguration('terminalIdleMonitor'),
+							);
+						}
 						createStatusBar();
 					}
 				});
-				panel.onDidDispose(() => stopFlashing());
+				settingsPanel.onDidDispose(() => {
+					settingsPanel = undefined;
+					stopFlashing();
+				});
+			},
+		),
+		vscode.commands.registerCommand(
+			'terminal-idle-monitor.enable',
+			async () => {
+				await vscode.workspace
+					.getConfiguration('terminalIdleMonitor')
+					.update('enabled', true, vscode.ConfigurationTarget.Global);
+				vscode.window.showInformationMessage('Terminal Monitoring enabled.');
+			},
+		),
+		vscode.commands.registerCommand(
+			'terminal-idle-monitor.disable',
+			async () => {
+				await vscode.workspace
+					.getConfiguration('terminalIdleMonitor')
+					.update('enabled', false, vscode.ConfigurationTarget.Global);
+				vscode.window.showInformationMessage('Terminal Monitoring disabled.');
 			},
 		),
 	);
@@ -363,6 +471,7 @@ export function activate(context: vscode.ExtensionContext) {
 				if (config.get<boolean>('showTerminateButton')) {
 					actions.push('Terminate');
 				}
+				actions.push('Exclude Terminal');
 				vscode.window
 					.showWarningMessage(
 						`IDLE: "${cmdSummary}" (${idle}s)${data.terminal === activeTerminal ? '' : ' [Background]'}`,
@@ -380,6 +489,8 @@ export function activate(context: vscode.ExtensionContext) {
 							data.obnoxiousNotified = false;
 						} else if (s === 'Terminate') {
 							await terminateExecution(data);
+						} else if (s === 'Exclude Terminal') {
+							await handleExcludeAction(data);
 						} else if (s?.startsWith('Snooze')) {
 							const mins = parseInt(s.match(/\d+/)![0]);
 							data.snoozeUntil = Date.now() + mins * 60000;
@@ -418,6 +529,7 @@ export function activate(context: vscode.ExtensionContext) {
 				if (config.get<boolean>('showTerminateButton')) {
 					actions.push('Terminate');
 				}
+				actions.push('Exclude Terminal');
 				vscode.window
 					.showInformationMessage(
 						`TOTAL: "${cmdSummary}" (${elapsed}s)${data.terminal === activeTerminal ? '' : ' [Background]'}`,
@@ -431,6 +543,8 @@ export function activate(context: vscode.ExtensionContext) {
 						}
 						if (s === 'Terminate') {
 							await terminateExecution(data);
+						} else if (s === 'Exclude Terminal') {
+							await handleExcludeAction(data);
 						} else if (s?.startsWith('Snooze')) {
 							const mins = parseInt(s.match(/\d+/)![0]);
 							data.snoozeUntil = Date.now() + mins * 60000;
@@ -525,6 +639,11 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration('terminalIdleMonitor')) {
 				createStatusBar();
+				if (settingsPanel) {
+					settingsPanel.webview.html = getSettingsHtml(
+						vscode.workspace.getConfiguration('terminalIdleMonitor'),
+					);
+				}
 			}
 		}),
 	);
@@ -546,8 +665,13 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
     input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     input[type="number"] { -moz-appearance: textfield; }
     .desc { font-size: .8em; opacity: .65; margin: 2px 0 0 26px; }
-    .obnoxious { border-left: 4px solid #f44; background: linear-gradient(90deg, rgba(255,68,68,0.05), transparent); }
-    .obnoxious-active { background: linear-gradient(90deg, rgba(255,68,68,0.08), transparent); }
+    .tags-container { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 4px; min-height: 32px; align-items: center; width: 100%; max-width: 400px; box-sizing: border-box; }
+    .tag { display: flex; align-items: center; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); padding: 2px 8px; border-radius: 3px; font-size: 0.85em; }
+    .tag-remove { margin-left: 6px; cursor: pointer; opacity: 0.7; font-weight: bold; }
+    .tag-remove:hover { opacity: 1; color: #f44; }
+    .tag-input { border: none !important; background: transparent !important; color: var(--vscode-input-foreground); flex: 1; min-width: 80px; padding: 2px 4px !important; outline: none; }
+    .obnoxious { border-left: 2px solid rgba(255,68,68,0.4); background: rgba(255,68,68,0.02); }
+    .obnoxious-active { background: rgba(255,68,68,0.04); }
     h2 { margin: 0 0 16px; font-size: 1.5em; font-weight: 400; border-bottom: 1px solid var(--vscode-widget-border); padding-bottom: 8px; }
     h3 { margin: 0 0 12px; font-size: 1.1em; text-transform: uppercase; opacity: .7; }
     .flex-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -601,8 +725,20 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
         <div class="setting-item">
           <label class="checkbox-label"><input type="checkbox" ${config.get('enableExclusions') ? 'checked' : ''} onchange="update('enableExclusions', this.checked)"> Exclude Terminals</label>
           <div style="display: ${config.get('enableExclusions') ? 'block' : 'none'}; margin: 10px 0 0 26px;">
-            <input type="text" style="width: 100%; max-width: 400px;" placeholder="e.g. npm: watch*, debug" value="${config.get('excludePatterns') || ''}" onchange="update('excludePatterns', this.value)">
-            <div class="desc" style="margin-left:0">Comma-separated titles to ignore (* supported)</div>
+            <div class="tags-container" id="exclusion-tags">
+              ${(config.get<string>('excludePatterns') || '')
+								.split(',')
+								.map((p) => p.trim())
+								.filter((p) => p)
+								.map(
+									(p) =>
+										`<span class="tag">${p}<span class="tag-remove" onclick="removeTag('${p}')">×</span></span>`,
+								)
+								.join('')}
+              <input type="text" class="tag-input" id="new-tag-input" placeholder="Add pattern..." onkeydown="handleTagInput(event)">
+            </div>
+            <input type="hidden" id="patterns-hidden" value="${config.get('excludePatterns') || ''}">
+            <div class="desc" style="margin-left:0">Press Enter or Tab to add. Titles to ignore (* supported)</div>
           </div>
         </div>
       </div>
@@ -610,7 +746,7 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
       <div class="section obnoxious ${!!config.get('obnoxiousMode') ? 'obnoxious-active' : ''}">
         <h3>Alert Intensity</h3>
         <div class="setting-item">
-          <label class="checkbox-label" style="font-size: 1em; color: #ff4444;">
+          <label class="checkbox-label" style="font-size: 1em; color: rgba(255,68,68,0.9);">
             <input type="checkbox" ${config.get('obnoxiousMode') ? 'checked' : ''} onchange="update('obnoxiousMode', this.checked)"> 
             🚨 OBNOXIOUS MODE
           </label>
@@ -641,25 +777,30 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
         </div>
       </div>
 
-      <div class="section" style="border-left: 4px solid #f88; background: linear-gradient(90deg, rgba(255,0,0,0.05), transparent);">
-        <h3 style="color: #f88; font-weight: bold;">⚠️ DANGER ZONE</h3>
+      <div class="section" style="border-left: 2px solid rgba(255,68,68,0.4); background: rgba(255,68,68,0.02);">
+        <h3 style="color: rgba(255,68,68,0.8); font-weight: bold;">⚠️ DANGER ZONE</h3>
         <div class="setting-item">
-          <label class="checkbox-label" style="color: #ff4444;"><input type="checkbox" ${config.get('autoTerminateEnabled') ? 'checked' : ''} onchange="update('autoTerminateEnabled', this.checked)"> ☢️ AUTO-TERMINATE</label>
-          <div class="desc">Automatically kill the session if idle for too long.</div>
+          <label class="checkbox-label" style="color: rgba(255,68,68,0.9);"><input type="checkbox" ${config.get('autoTerminateEnabled') ? 'checked' : ''} onchange="update('autoTerminateEnabled', this.checked)"> ☢️ AUTO-TERMINATE</label>
+          <div class="desc">Automatically kill the session if idle for too long. (Workspace/Current)</div>
         </div>
 
-        <div style="display: ${!!config.get('autoTerminateEnabled') ? 'block' : 'none'}; margin: 10px 0 0 26px;">
-           <div class="setting-item">
+        <div style="display: ${!!config.get('autoTerminateEnabled') ? 'block' : 'none'};">
+          <div class="setting-item" style="margin: 5px 0 10px 26px;">
+            <label class="checkbox-label"><input type="checkbox" ${config.inspect('autoTerminateEnabled')?.globalValue ? 'checked' : ''} onchange="update('autoTerminateEnabled', this.checked, 'global')"> Enable Globally</label>
+            <div class="desc">Apply auto-termination to all windows and projects.</div>
+          </div>
+
+          <div class="setting-item" style="margin-left: 26px;">
             <label>Auto-Kill After (minutes)</label>
             <input type="number" value="${config.get('autoTerminateTimeout')}" onchange="update('autoTerminateTimeout', parseInt(this.value))">
           </div>
           
-          <div class="setting-item" style="margin-top: 16px;">
+          <div class="setting-item" style="margin-top: 16px; margin-left: 26px;">
             <label class="checkbox-label"><input type="checkbox" ${config.get('useSigInt') ? 'checked' : ''} onchange="update('useSigInt', this.checked)"> Gentle Termination (Ctrl+C)</label>
             <div class="desc">Send SIGINT (Ctrl+C) instead of destroying the terminal window.</div>
           </div>
 
-          <div style="display: ${!!config.get('useSigInt') ? 'block' : 'none'}; margin: 10px 0 0 26px;">
+          <div style="display: ${!!config.get('useSigInt') ? 'block' : 'none'}; margin: 10px 0 0 52px;">
             <div class="setting-item">
               <label>Hard Terminate After (retries)</label>
               <input type="number" value="${config.get('hardTerminateRetries')}" onchange="update('hardTerminateRetries', parseInt(this.value))">
@@ -676,8 +817,32 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
 
     <script>
       const vscode = acquireVsCodeApi(); 
-      function update(key, value) { vscode.postMessage({ command: 'update', key, value }); }
+      function update(key, value, target) { vscode.postMessage({ command: 'update', key, value, target }); }
       function reset() { vscode.postMessage({ command: 'reset' }); }
+
+      function handleTagInput(e) {
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          const input = e.target;
+          const val = input.value.trim();
+          if (val) {
+            const current = document.getElementById('patterns-hidden').value;
+            const patterns = current ? current.split(',').map(p => p.trim()).filter(p => p) : [];
+            if (!patterns.includes(val)) {
+              patterns.push(val);
+              update('excludePatterns', patterns.join(', '));
+            }
+            input.value = '';
+          }
+        }
+      }
+
+      function removeTag(tag) {
+        const current = document.getElementById('patterns-hidden').value;
+        const patterns = current ? current.split(',').map(p => p.trim()).filter(p => p) : [];
+        const filtered = patterns.filter(p => p !== tag);
+        update('excludePatterns', filtered.join(', '));
+      }
     </script>
   </body></html>`;
 }

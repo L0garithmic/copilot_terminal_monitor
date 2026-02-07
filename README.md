@@ -11,7 +11,9 @@ Keep track of your terminal commands and get notified when things get stuck or r
 - 🚨 **Obnoxious Mode**: For cases where you absolutely cannot miss an alert—flashes the VS Code UI and uses modal popups.
 - 💤 **Snooze**: Quickly silence alerts for a specific command for 1, 5, or 10 minutes.
 - 📊 **Status Bar Integration**: Live updates of runtime and idle state with dynamic icons.
+- 🏷️ **Tag-Style Exclusions**: Modern exclusion management with tag-based patterns and quick removal.
 - ⚙️ **Settings UI**: Manage all configurations via a dedicated, user-friendly dashboard.
+- ⌨️ **Command Palette Access**: Quick commands to enable, disable, and configure the monitor.
 
 ## Extension Settings
 
@@ -21,8 +23,10 @@ This extension contributes the following settings:
 * `terminalIdleMonitor.idleTimeout`: Seconds before an idle notification (Default: 60s).
 * `terminalIdleMonitor.totalTimeout`: Minutes before a total duration notification (Default: 5m).
 * `terminalIdleMonitor.onlyMonitorActive`: Restrict monitoring to the active terminal tab only.
-* `terminalIdleMonitor.autoTerminate`: Enable automated process termination.
-* `terminalIdleMonitor.gentleTerminate`: Attempt to send `Ctrl+C` before killing the terminal.
+* `terminalIdleMonitor.autoTerminateEnabled`: Enable automated process termination.
+* `terminalIdleMonitor.enableExclusions`: Enable terminal title patterns to ignore.
+* `terminalIdleMonitor.excludePatterns`: Comma-separated list of titles to exclude.
+* `terminalIdleMonitor.useSigInt`: Attempt to send `Ctrl+C` before killing the terminal.
 * `terminalIdleMonitor.hardTerminateRetries`: Number of SIGINT attempts before force-closing.
 * `terminalIdleMonitor.obnoxiousMode`: Enable UI flashing and modal popups.
 

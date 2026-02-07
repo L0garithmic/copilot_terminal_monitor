@@ -2,6 +2,19 @@
 
 All notable changes to the "terminal-idle-monitor" extension will be documented in this file.
 
+## [1.3.0] - 2026-02-06
+
+### Added
+- **Tag-Style Exclusions**: Settings page now features a modern "tag" list for exclusions. Press Enter or Tab to add, and click the "x" to remove.
+- **On-the-fly Exclusions**: Add terminals to the exclusion list directly from Idle/Total alerts or the Status Bar menu.
+- **Command Palette Integration**: Direct commands for "Enable", "Disable", and "Open Settings" available in the Command Palette.
+- **Improved Auto-Terminate Control**: Added a "Enable Globally" toggle for Auto-Terminate in settings, hidden when the feature is disabled.
+- **Refined Settings UI**: Softened the "Danger Zone" and "Obnoxious Mode" styling for a better integration with VS Code's theme.
+
+### Changed
+- **Menu Layout**: Consolidated status bar menu items to a single line for a cleaner look.
+- **Command Prefixes**: Unified all commands under the "Terminal Monitor:" prefix.
+
 ## [1.2.6] - 2026-02-05
 
 ### Added
