@@ -22,9 +22,31 @@ export function activate(context: vscode.ExtensionContext) {
 	let flashState = false;
 	let currentFlashTarget: vscode.ConfigurationTarget | undefined;
 	let isNotificationShowing = false;
+	let lastNotificationCloseTime = 0;
 
 	let statusBarItem: vscode.StatusBarItem;
 	let settingsPanel: vscode.WebviewPanel | undefined;
+
+	const isTerminalExcluded = (terminalName: string) => {
+		const config = vscode.workspace.getConfiguration('terminalIdleMonitor');
+		if (!config.get<boolean>('enableExclusions')) {
+			return false;
+		}
+		const excludePatterns = config.get<string>('excludePatterns') || '';
+		if (!excludePatterns) {
+			return false;
+		}
+		const patterns = excludePatterns.split(',').map((p) => p.trim());
+		return patterns.some((p) => {
+			const regex = new RegExp(
+				'^' +
+					p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*') +
+					'$',
+				'i',
+			);
+			return regex.test(terminalName);
+		});
+	};
 
 	const terminateExecution = async (data: ExecutionData) => {
 		const config = vscode.workspace.getConfiguration('terminalIdleMonitor');
@@ -295,10 +317,16 @@ export function activate(context: vscode.ExtensionContext) {
 						}
 						if (
 							message.key === 'statusBarAlignment' ||
-							message.key === 'autoTerminateEnabled'
+							message.key === 'autoTerminateEnabled' ||
+							message.key === 'enabled'
 						) {
 							createStatusBar();
 						}
+					} else if (message.command === 'save') {
+						vscode.window.showInformationMessage(
+							'Terminal Idle Monitor settings saved!',
+						);
+						createStatusBar();
 					} else if (message.command === 'reset') {
 						const cfg = vscode.workspace.getConfiguration(
 							'terminalIdleMonitor',
@@ -392,6 +420,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// Use Array.from to avoid issues if the map is modified during iteration (e.g. by terminal disposal)
 		for (const data of Array.from(activeExecutions.values())) {
+			if (isTerminalExcluded(data.terminal.name)) {
+				continue;
+			}
+
 			if (onlyMonitorActive && data.terminal !== activeTerminal) {
 				continue;
 			}
@@ -432,7 +464,7 @@ export function activate(context: vscode.ExtensionContext) {
 			let triggerIdleNow = false;
 			let isObnoxious = false;
 
-			if (!isNotificationShowing) {
+			if (!isNotificationShowing && now - lastNotificationCloseTime > 2000) {
 				if (!data.obnoxiousNotified) {
 					if (isPastObnoxious) {
 						triggerIdleNow = true;
@@ -480,6 +512,7 @@ export function activate(context: vscode.ExtensionContext) {
 					)
 					.then(async (s) => {
 						isNotificationShowing = false;
+						lastNotificationCloseTime = Date.now();
 						if (isObnoxious) {
 							await stopFlashing();
 						}
@@ -506,6 +539,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 			// Auto-Terminate Check
 			if (
+				config.get<boolean>('enabled') &&
 				config.get<boolean>('autoTerminateEnabled') &&
 				idle >= (config.get<number>('autoTerminateTimeout') || 10) * 60
 			) {
@@ -514,7 +548,9 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			if (
+				config.get<boolean>('enabled') &&
 				!isNotificationShowing &&
+				now - lastNotificationCloseTime > 2000 &&
 				!data.totalNotified &&
 				elapsed >= (config.get<number>('totalTimeout') || 5) * 60
 			) {
@@ -538,6 +574,7 @@ export function activate(context: vscode.ExtensionContext) {
 					)
 					.then(async (s) => {
 						isNotificationShowing = false;
+						lastNotificationCloseTime = Date.now();
 						if (isObnoxiousTotal) {
 							await stopFlashing();
 						}
@@ -582,27 +619,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.window.onDidStartTerminalShellExecution(async (event) => {
-			const config = vscode.workspace.getConfiguration('terminalIdleMonitor');
-			if (config.get<boolean>('enableExclusions')) {
-				const excludePatterns = config.get<string>('excludePatterns') || '';
-				if (excludePatterns) {
-					const patterns = excludePatterns.split(',').map((p) => p.trim());
-					const terminalName = event.terminal.name;
-					const isExcluded = patterns.some((p) => {
-						const regex = new RegExp(
-							'^' +
-								p
-									.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-									.replace(/\\\*/g, '.*') +
-								'$',
-							'i',
-						);
-						return regex.test(terminalName);
-					});
-					if (isExcluded) {
-						return;
-					}
-				}
+			if (isTerminalExcluded(event.terminal.name)) {
+				return;
 			}
 
 			const data: ExecutionData = {
@@ -636,8 +654,12 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.workspace.onDidChangeConfiguration((e) => {
+		vscode.workspace.onDidChangeConfiguration(async (e) => {
 			if (e.affectsConfiguration('terminalIdleMonitor')) {
+				const config = vscode.workspace.getConfiguration('terminalIdleMonitor');
+				if (!config.get<boolean>('enabled')) {
+					await stopFlashing();
+				}
 				createStatusBar();
 				if (settingsPanel) {
 					settingsPanel.webview.html = getSettingsHtml(
@@ -758,6 +780,7 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
             <div class="setting-item">
               <label>Flash Color (Hex)</label>
               <input type="text" value="${config.get('obnoxiousColor')}" onchange="update('obnoxiousColor', this.value)">
+              <div class="desc" style="margin-left:0">Applies to next alert</div>
             </div>
             <div class="setting-item">
               <label>Intensify After (seconds)</label>
@@ -810,14 +833,16 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
         </div>
       </div>
 
-      <div style="margin-top: 24px; display: flex; justify-content: flex-end;">
+      <div style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 10px;">
         <button class="secondary" onclick="reset()">Reset All to Defaults</button>
+        <button onclick="save()">Save Settings</button>
       </div>
     </div>
 
     <script>
       const vscode = acquireVsCodeApi(); 
       function update(key, value, target) { vscode.postMessage({ command: 'update', key, value, target }); }
+      function save() { vscode.postMessage({ command: 'save' }); }
       function reset() { vscode.postMessage({ command: 'reset' }); }
 
       function handleTagInput(e) {

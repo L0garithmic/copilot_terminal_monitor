@@ -2,6 +2,17 @@
 
 All notable changes to the "terminal-idle-monitor" extension will be documented in this file.
 
+## [1.3.1] - 2026-02-06
+
+### Added
+- **Save Settings Button**: Explicit 'Save Settings' button on the settings page for better user confirmation.
+- **Success Feedback**: Added a toast notification that confirms when settings have been saved.
+
+### Changed
+- **Notification Gating**: Improved notification logic to prevent multiple alerts from "stacking" or overlapping.
+- **Paced Alerts**: Implemented a short cooldown between notifications to improve focus and prevent alert fatigue.
+- **Dynamic Exclusion Refresh**: Changing exclusion patterns now immediately applies to currently running terminals, stopping or resuming monitoring without manual intervention.
+
 ## [1.3.0] - 2026-02-06
 
 ### Added

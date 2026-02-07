@@ -5,15 +5,13 @@ Keep track of your terminal commands and get notified when things get stuck or r
 ## Features
 
 - 🕒 **Idle Tracking**: Notifies you if a command hasn't produced output for a specific duration.
-- ⏱️ **Total Time Tracking**: Alerting you when a process exceeds a total run-time threshold.- 🏢 **Per-Workspace Control**: Enable destructive modes and timers specifically for individual projects.- � **Danger Zone**: Automate terminal management with powerful termination tools.
+- ⏱️ **Total Time Tracking**: Alerting you when a process exceeds a total run-time threshold.
 - 🛑 **Auto-Terminate**: Automatically kill processes that exceed your specified run-time or idle thresholds.
-- 🧊 **Gentle & Hard Termination**: Supports sending `Ctrl+C` (SIGINT) for graceful stops, with automatic hard-close escalation if the process remains stuck.
-- 🚨 **Obnoxious Mode**: For cases where you absolutely cannot miss an alert—flashes the VS Code UI and uses modal popups.
-- 💤 **Snooze**: Quickly silence alerts for a specific command for 1, 5, or 10 minutes.
+- 🧊 **Gentle & Hard Termination**: Supports sending `Ctrl+C` (SIGINT) for graceful stops, with automatic hard-close escalation.
+- 🚨 **Obnoxious Mode**: Flashes the VS Code UI and uses modal popups for unmissable alerts.
+- 💤 **Snooze**: Silence alerts for a specific command for 5, 10, or 15 minutes.
 - 📊 **Status Bar Integration**: Live updates of runtime and idle state with dynamic icons.
 - 🏷️ **Tag-Style Exclusions**: Modern exclusion management with tag-based patterns and quick removal.
-- ⚙️ **Settings UI**: Manage all configurations via a dedicated, user-friendly dashboard.
-- ⌨️ **Command Palette Access**: Quick commands to enable, disable, and configure the monitor.
 
 ## Extension Settings
 
