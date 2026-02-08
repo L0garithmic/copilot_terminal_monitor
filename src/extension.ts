@@ -11,6 +11,7 @@ interface ExecutionData {
 	snoozeUntil: number;
 	forceNextObnoxious?: boolean;
 	terminationAttempts: number;
+	dismissNotification?: () => void;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -190,8 +191,40 @@ export function activate(context: vscode.ExtensionContext) {
 				const globalValue = inspect?.globalValue ?? false;
 				const workspaceValue = inspect?.workspaceValue ?? false;
 				const activeTerminal = vscode.window.activeTerminal;
+				const activeExecution = activeTerminal
+					? Array.from(activeExecutions.values()).find(
+							(d) => d.terminal === activeTerminal,
+						)
+					: undefined;
 
 				const options: vscode.QuickPickItem[] = [];
+
+				if (activeExecution) {
+					options.push({
+						label: '$(refresh) Reset Timer',
+						description: `Last activity: ${Math.floor((Date.now() - activeExecution.lastActivity) / 1000)}s ago`,
+					});
+					options.push({
+						label: '$(clock) Snooze 5m',
+						description: 'Pause alerts for 5 minutes',
+					});
+					options.push({
+						label: '$(clock) Snooze 10m',
+						description: 'Pause alerts for 10 minutes',
+					});
+					options.push({
+						label: '$(clock) Snooze 15m',
+						description: 'Pause alerts for 15 minutes',
+					});
+					options.push({
+						label: '$(terminate) Terminate',
+						description: 'Close this terminal session',
+					});
+					options.push({
+						label: '',
+						kind: vscode.QuickPickItemKind.Separator,
+					});
+				}
 
 				if (hasWorkspace) {
 					options.push({
@@ -226,7 +259,33 @@ export function activate(context: vscode.ExtensionContext) {
 				});
 
 				if (selection) {
-					if (selection.label.includes('Open Settings')) {
+					if (selection.label.includes('Reset Timer') && activeExecution) {
+						activeExecution.lastActivity = Date.now();
+						activeExecution.idleNotified = false;
+						activeExecution.obnoxiousNotified = false;
+						await stopFlashing();
+						if (activeExecution.dismissNotification) {
+							activeExecution.dismissNotification();
+							activeExecution.dismissNotification = undefined;
+						}
+					} else if (selection.label.includes('Snooze') && activeExecution) {
+						const minsMatch = selection.label.match(/\d+/);
+						const mins = minsMatch ? parseInt(minsMatch[0]) : 5;
+						activeExecution.snoozeUntil = Date.now() + mins * 60000;
+						activeExecution.idleNotified = false;
+						activeExecution.obnoxiousNotified = false;
+						activeExecution.totalNotified = false;
+						if (config.get<boolean>('obnoxiousSnooze')) {
+							activeExecution.forceNextObnoxious = true;
+						}
+						await stopFlashing();
+						if (activeExecution.dismissNotification) {
+							activeExecution.dismissNotification();
+							activeExecution.dismissNotification = undefined;
+						}
+					} else if (selection.label.includes('Terminate') && activeExecution) {
+						await terminateExecution(activeExecution);
+					} else if (selection.label.includes('Open Settings')) {
 						vscode.commands.executeCommand(
 							'terminal-idle-monitor.openSettings',
 						);
@@ -354,7 +413,6 @@ export function activate(context: vscode.ExtensionContext) {
 							'enableExclusions',
 							'excludePatterns',
 							'onlyMonitorActive',
-							'showTerminateButton',
 							'useSigInt',
 							'autoTerminateEnabled',
 							'autoTerminateTimeout',
@@ -379,7 +437,11 @@ export function activate(context: vscode.ExtensionContext) {
 								);
 							}
 							// Only clear workspace overrides for keys that explicitly support it
-							if (hasWorkspace && workspaceOverridableKeys.includes(key) && inspect?.workspaceValue !== undefined) {
+							if (
+								hasWorkspace &&
+								workspaceOverridableKeys.includes(key) &&
+								inspect?.workspaceValue !== undefined
+							) {
 								await cfg.update(
 									key,
 									undefined,
@@ -518,42 +580,61 @@ export function activate(context: vscode.ExtensionContext) {
 					'Snooze 5m',
 					'Snooze 10m',
 					'Snooze 15m',
+					'Terminate',
+					'Exclude Terminal',
 				];
-				if (config.get<boolean>('showTerminateButton')) {
-					actions.push('Terminate');
-				}
-				actions.push('Exclude Terminal');
-				vscode.window
-					.showWarningMessage(
-						`IDLE: "${cmdSummary}" (${idle}s)${data.terminal === activeTerminal ? '' : ' [Background]'}`,
-						{ modal: isObnoxious },
-						...actions,
-					)
-					.then(async (s) => {
-						isNotificationShowing = false;
-						lastNotificationCloseTime = Date.now();
-						if (isObnoxious) {
+
+				const message = `IDLE: "${cmdSummary}" (${idle}s)${data.terminal === activeTerminal ? '' : ' [Background]'}`;
+
+				if (isObnoxious) {
+					vscode.window
+						.showWarningMessage(message, { modal: true }, ...actions)
+						.then(async (s) => {
+							isNotificationShowing = false;
+							lastNotificationCloseTime = Date.now();
 							await stopFlashing();
-						}
-						if (s === 'Reset Timer') {
-							data.lastActivity = Date.now();
-							data.idleNotified = false;
-							data.obnoxiousNotified = false;
-						} else if (s === 'Terminate') {
-							await terminateExecution(data);
-						} else if (s === 'Exclude Terminal') {
-							await handleExcludeAction(data);
-						} else if (s?.startsWith('Snooze')) {
-							const mins = parseInt(s.match(/\d+/)![0]);
-							data.snoozeUntil = Date.now() + mins * 60000;
-							data.idleNotified = false;
-							data.obnoxiousNotified = false;
-							data.totalNotified = false;
-							if (config.get<boolean>('obnoxiousSnooze')) {
-								data.forceNextObnoxious = true;
+							if (s === 'Reset Timer') {
+								data.lastActivity = Date.now();
+								data.idleNotified = false;
+								data.obnoxiousNotified = false;
+							} else if (s === 'Terminate') {
+								await terminateExecution(data);
+							} else if (s === 'Exclude Terminal') {
+								await handleExcludeAction(data);
+							} else if (s?.startsWith('Snooze')) {
+								const mins = parseInt(s.match(/\d+/)![0]);
+								data.snoozeUntil = Date.now() + mins * 60000;
+								data.idleNotified = false;
+								data.obnoxiousNotified = false;
+								data.totalNotified = false;
+								if (config.get<boolean>('obnoxiousSnooze')) {
+									data.forceNextObnoxious = true;
+								}
 							}
-						}
-					});
+						});
+				} else {
+					vscode.window
+						.withProgress(
+							{
+								location: vscode.ProgressLocation.Notification,
+								title: `${message} (Click status bar icon to Snooze/Terminate)`,
+								cancellable: true,
+							},
+							(progress, token) => {
+								return new Promise<void>((resolve) => {
+									data.dismissNotification = resolve;
+									token.onCancellationRequested(() => {
+										data.dismissNotification = undefined;
+										resolve();
+									});
+								});
+							},
+						)
+						.then(() => {
+							isNotificationShowing = false;
+							lastNotificationCloseTime = Date.now();
+						});
+				}
 			}
 
 			// Auto-Terminate Check
@@ -580,38 +661,63 @@ export function activate(context: vscode.ExtensionContext) {
 					startFlashing(config.get<string>('obnoxiousColor') || '#ff0000');
 					data.forceNextObnoxious = false;
 				}
-				const actions = ['Snooze 5m', 'Snooze 10m', 'Snooze 15m'];
-				if (config.get<boolean>('showTerminateButton')) {
-					actions.push('Terminate');
-				}
-				actions.push('Exclude Terminal');
-				vscode.window
-					.showInformationMessage(
-						`TOTAL: "${cmdSummary}" (${elapsed}s)${data.terminal === activeTerminal ? '' : ' [Background]'}`,
-						{ modal: isObnoxiousTotal },
-						...actions,
-					)
-					.then(async (s) => {
-						isNotificationShowing = false;
-						lastNotificationCloseTime = Date.now();
-						if (isObnoxiousTotal) {
-							await stopFlashing();
-						}
-						if (s === 'Terminate') {
-							await terminateExecution(data);
-						} else if (s === 'Exclude Terminal') {
-							await handleExcludeAction(data);
-						} else if (s?.startsWith('Snooze')) {
-							const mins = parseInt(s.match(/\d+/)![0]);
-							data.snoozeUntil = Date.now() + mins * 60000;
-							data.idleNotified = false;
-							data.obnoxiousNotified = false;
-							data.totalNotified = false;
-							if (config.get<boolean>('obnoxiousSnooze')) {
-								data.forceNextObnoxious = true;
+				const actions = [
+					'Snooze 5m',
+					'Snooze 10m',
+					'Snooze 15m',
+					'Terminate',
+					'Exclude Terminal',
+				];
+
+				const message = `TOTAL: "${cmdSummary}" (${elapsed}s)${data.terminal === activeTerminal ? '' : ' [Background]'}`;
+
+				if (isObnoxiousTotal) {
+					vscode.window
+						.showInformationMessage(message, { modal: true }, ...actions)
+						.then(async (s) => {
+							isNotificationShowing = false;
+							lastNotificationCloseTime = Date.now();
+							if (isObnoxiousTotal) {
+								await stopFlashing();
 							}
-						}
-					});
+							if (s === 'Terminate') {
+								await terminateExecution(data);
+							} else if (s === 'Exclude Terminal') {
+								await handleExcludeAction(data);
+							} else if (s?.startsWith('Snooze')) {
+								const mins = parseInt(s.match(/\d+/)![0]);
+								data.snoozeUntil = Date.now() + mins * 60000;
+								data.idleNotified = false;
+								data.obnoxiousNotified = false;
+								data.totalNotified = false;
+								if (config.get<boolean>('obnoxiousSnooze')) {
+									data.forceNextObnoxious = true;
+								}
+							}
+						});
+				} else {
+					vscode.window
+						.withProgress(
+							{
+								location: vscode.ProgressLocation.Notification,
+								title: `${message} (Click status bar icon to Snooze/Terminate)`,
+								cancellable: true,
+							},
+							(progress, token) => {
+								return new Promise<void>((resolve) => {
+									data.dismissNotification = resolve;
+									token.onCancellationRequested(() => {
+										data.dismissNotification = undefined;
+										resolve();
+									});
+								});
+							},
+						)
+						.then(() => {
+							isNotificationShowing = false;
+							lastNotificationCloseTime = Date.now();
+						});
+				}
 			}
 		}
 
@@ -659,6 +765,10 @@ export function activate(context: vscode.ExtensionContext) {
 					data.lastActivity = Date.now();
 					data.idleNotified = false;
 					data.obnoxiousNotified = false;
+					if (data.dismissNotification) {
+						data.dismissNotification();
+						data.dismissNotification = undefined;
+					}
 				}
 			} catch {
 			} finally {
@@ -764,10 +874,6 @@ function getSettingsHtml(
         <div class="setting-item">
           <label class="checkbox-label"><input type="checkbox" ${config.get('onlyMonitorActive') ? 'checked' : ''} onchange="update('onlyMonitorActive', this.checked)"> Monitor Active Terminal Only</label>
           <div class="desc">If enabled, terminals in the background will not trigger alerts.</div>
-        </div>
-        <div class="setting-item">
-          <label class="checkbox-label"><input type="checkbox" ${config.get('showTerminateButton') ? 'checked' : ''} onchange="update('showTerminateButton', this.checked)"> Show Terminate Button</label>
-          <div class="desc">Adds an option to close the terminal directly from alerts.</div>
         </div>
 
         <div class="setting-item">
