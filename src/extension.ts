@@ -366,7 +366,9 @@ export function activate(context: vscode.ExtensionContext) {
 							vscode.workspace.workspaceFolders.length > 0
 						);
 
-						// Use a more efficient reset that doesn't trigger 40+ config changes sequentially
+						// Workspace-specific keys that support per-workspace overrides
+						const workspaceOverridableKeys = ['autoTerminateEnabled'];
+
 						for (const key of keys) {
 							const inspect = cfg.inspect(key);
 							if (inspect?.globalValue !== undefined) {
@@ -376,7 +378,8 @@ export function activate(context: vscode.ExtensionContext) {
 									vscode.ConfigurationTarget.Global,
 								);
 							}
-							if (hasWorkspace && inspect?.workspaceValue !== undefined) {
+							// Only clear workspace overrides for keys that explicitly support it
+							if (hasWorkspace && workspaceOverridableKeys.includes(key) && inspect?.workspaceValue !== undefined) {
 								await cfg.update(
 									key,
 									undefined,
@@ -387,6 +390,7 @@ export function activate(context: vscode.ExtensionContext) {
 						if (settingsPanel) {
 							settingsPanel.webview.html = getSettingsHtml(
 								vscode.workspace.getConfiguration('terminalIdleMonitor'),
+								hasWorkspace,
 							);
 						}
 						createStatusBar();
