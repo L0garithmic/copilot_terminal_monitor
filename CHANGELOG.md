@@ -2,6 +2,14 @@
 
 All notable changes to the "terminal-idle-monitor" extension will be documented in this file.
 
+## [1.3.4] - 2026-02-07
+
+### Changed
+- **Global by Default**: Settings now save to Global (User) configuration by default to ensure consistency across multiple windows.
+- **Improved Sync**: Settings panel now synchronizes immediately across all open project windows when a change is made.
+- **Optimized Performance**: Reduced disk I/O pressure from "Obnoxious Mode" flashing to prevent settings file conflicts.
+- **UI Clarification**: Explicitly distinguished between Global activation and Workspace overrides in the Danger Zone settings.
+
 ## [1.3.1] - 2026-02-06
 
 ### Added
