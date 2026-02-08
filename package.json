@@ -108,7 +108,7 @@
         },
         "terminalIdleMonitor.obnoxiousPerWindow": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "If enabled, obnoxious flashing will only affect the current window (requires a workspace to be open)."
         },
         "terminalIdleMonitor.enableExclusions": {

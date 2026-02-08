@@ -153,10 +153,15 @@ export function activate(context: vscode.ExtensionContext) {
 						'statusBar.background': color,
 					}
 				: {};
-			await vscode.workspace
-				.getConfiguration('workbench')
-				.update('colorCustomizations', customizations, currentFlashTarget);
-		}, 500);
+
+			const workbenchConfig = vscode.workspace.getConfiguration('workbench');
+			// Only update if the value has changed or is different to avoid redundant writes
+			await workbenchConfig.update(
+				'colorCustomizations',
+				customizations,
+				currentFlashTarget,
+			);
+		}, 1000); // Slower interval (1s) to reduce disk I/O pressure on settings.json
 	};
 
 	const stopFlashing = async () => {
@@ -290,15 +295,14 @@ export function activate(context: vscode.ExtensionContext) {
 				);
 				settingsPanel.webview.html = getSettingsHtml(
 					vscode.workspace.getConfiguration('terminalIdleMonitor'),
+					!!(
+						vscode.workspace.workspaceFolders &&
+						vscode.workspace.workspaceFolders.length > 0
+					),
 				);
 				settingsPanel.webview.onDidReceiveMessage(async (message) => {
 					if (message.command === 'update') {
-						const hasWorkspace =
-							vscode.workspace.workspaceFolders &&
-							vscode.workspace.workspaceFolders.length > 0;
-						let target = hasWorkspace
-							? vscode.ConfigurationTarget.Workspace
-							: vscode.ConfigurationTarget.Global;
+						let target = vscode.ConfigurationTarget.Global;
 
 						if (message.target === 'global') {
 							target = vscode.ConfigurationTarget.Global;
@@ -313,6 +317,10 @@ export function activate(context: vscode.ExtensionContext) {
 						if (settingsPanel) {
 							settingsPanel.webview.html = getSettingsHtml(
 								vscode.workspace.getConfiguration('terminalIdleMonitor'),
+								!!(
+									vscode.workspace.workspaceFolders &&
+									vscode.workspace.workspaceFolders.length > 0
+								),
 							);
 						}
 						if (
@@ -352,21 +360,28 @@ export function activate(context: vscode.ExtensionContext) {
 							'autoTerminateTimeout',
 							'hardTerminateRetries',
 						];
+
+						const hasWorkspace = !!(
+							vscode.workspace.workspaceFolders &&
+							vscode.workspace.workspaceFolders.length > 0
+						);
+
+						// Use a more efficient reset that doesn't trigger 40+ config changes sequentially
 						for (const key of keys) {
-							await cfg.update(
-								key,
-								undefined,
-								vscode.ConfigurationTarget.Global,
-							);
-							// Also clear workspace settings to prevent overrides from sticking
-							try {
+							const inspect = cfg.inspect(key);
+							if (inspect?.globalValue !== undefined) {
+								await cfg.update(
+									key,
+									undefined,
+									vscode.ConfigurationTarget.Global,
+								);
+							}
+							if (hasWorkspace && inspect?.workspaceValue !== undefined) {
 								await cfg.update(
 									key,
 									undefined,
 									vscode.ConfigurationTarget.Workspace,
 								);
-							} catch {
-								// Workspace update might fail if no workspace is open
 							}
 						}
 						if (settingsPanel) {
@@ -663,7 +678,11 @@ export function activate(context: vscode.ExtensionContext) {
 				createStatusBar();
 				if (settingsPanel) {
 					settingsPanel.webview.html = getSettingsHtml(
-						vscode.workspace.getConfiguration('terminalIdleMonitor'),
+						config,
+						!!(
+							vscode.workspace.workspaceFolders &&
+							vscode.workspace.workspaceFolders.length > 0
+						),
 					);
 				}
 			}
@@ -671,7 +690,10 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 }
 
-function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
+function getSettingsHtml(
+	config: vscode.WorkspaceConfiguration,
+	hasWorkspace: boolean,
+): string {
 	const alignment = config.get<string>('statusBarAlignment') || 'Left';
 	return `<!DOCTYPE html><html><head><style>
     body { font: 13px sans-serif; padding: 16px; color: var(--vscode-foreground); background: var(--vscode-editor-background); line-height: 1.4; }
@@ -803,27 +825,39 @@ function getSettingsHtml(config: vscode.WorkspaceConfiguration): string {
       <div class="section" style="border-left: 2px solid rgba(255,68,68,0.4); background: rgba(255,68,68,0.02);">
         <h3 style="color: rgba(255,68,68,0.8); font-weight: bold;">⚠️ DANGER ZONE</h3>
         <div class="setting-item">
-          <label class="checkbox-label" style="color: rgba(255,68,68,0.9);"><input type="checkbox" ${config.get('autoTerminateEnabled') ? 'checked' : ''} onchange="update('autoTerminateEnabled', this.checked)"> ☢️ AUTO-TERMINATE</label>
-          <div class="desc">Automatically kill the session if idle for too long. (Workspace/Current)</div>
+          <label class="checkbox-label" style="color: rgba(255,68,68,0.9);">
+            <input type="checkbox" ${config.inspect('autoTerminateEnabled')?.globalValue ? 'checked' : ''} onchange="update('autoTerminateEnabled', this.checked, 'global')"> 
+            ☢️ AUTO-TERMINATE (Global)
+          </label>
+          <div class="desc">Automatically kill the session if idle for too long on all projects.</div>
         </div>
 
-        <div style="display: ${!!config.get('autoTerminateEnabled') ? 'block' : 'none'};">
+        ${
+					hasWorkspace
+						? `
           <div class="setting-item" style="margin: 5px 0 10px 26px;">
-            <label class="checkbox-label"><input type="checkbox" ${config.inspect('autoTerminateEnabled')?.globalValue ? 'checked' : ''} onchange="update('autoTerminateEnabled', this.checked, 'global')"> Enable Globally</label>
-            <div class="desc">Apply auto-termination to all windows and projects.</div>
+            <label class="checkbox-label" style="color: rgba(255,68,68,0.9);">
+              <input type="checkbox" ${config.inspect('autoTerminateEnabled')?.workspaceValue !== undefined ? (config.inspect('autoTerminateEnabled')?.workspaceValue ? 'checked' : '') : ''} onchange="update('autoTerminateEnabled', this.checked, 'workspace')"> 
+              Enable for THIS Workspace
+            </label>
+            <div class="desc">Overrides global setting for this folder only.</div>
           </div>
+        `
+						: ''
+				}
 
-          <div class="setting-item" style="margin-left: 26px;">
+        <div style="display: ${!!config.get('autoTerminateEnabled') ? 'block' : 'none'}; padding-left: 26px;">
+          <div class="setting-item">
             <label>Auto-Kill After (minutes)</label>
             <input type="number" value="${config.get('autoTerminateTimeout')}" onchange="update('autoTerminateTimeout', parseInt(this.value))">
           </div>
           
-          <div class="setting-item" style="margin-top: 16px; margin-left: 26px;">
+          <div class="setting-item" style="margin-top: 16px;">
             <label class="checkbox-label"><input type="checkbox" ${config.get('useSigInt') ? 'checked' : ''} onchange="update('useSigInt', this.checked)"> Gentle Termination (Ctrl+C)</label>
             <div class="desc">Send SIGINT (Ctrl+C) instead of destroying the terminal window.</div>
           </div>
 
-          <div style="display: ${!!config.get('useSigInt') ? 'block' : 'none'}; margin: 10px 0 0 52px;">
+          <div style="display: ${!!config.get('useSigInt') ? 'block' : 'none'}; margin: 10px 0 0 26px;">
             <div class="setting-item">
               <label>Hard Terminate After (retries)</label>
               <input type="number" value="${config.get('hardTerminateRetries')}" onchange="update('hardTerminateRetries', parseInt(this.value))">
