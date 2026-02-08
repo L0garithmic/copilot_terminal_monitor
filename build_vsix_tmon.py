@@ -64,9 +64,7 @@ def check_prerequisites():
 
     # Check Node.js
     try:
-        result = subprocess.run(
-            ["node", "--version"], capture_output=True, text=True, check=True
-        )
+        result = subprocess.run(["node", "--version"], capture_output=True, text=True, check=True)
         print(f"✅ Node.js: {result.stdout.strip()}")
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("❌ Node.js is not installed or not in PATH")
@@ -75,9 +73,7 @@ def check_prerequisites():
     # Check npm (with .cmd extension on Windows)
     npm_cmd = "npm.cmd" if IS_WINDOWS else "npm"
     try:
-        result = subprocess.run(
-            [npm_cmd, "--version"], capture_output=True, text=True, check=True
-        )
+        result = subprocess.run([npm_cmd, "--version"], capture_output=True, text=True, check=True)
         print(f"✅ npm: {result.stdout.strip()}")
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("❌ npm is not installed or not in PATH")
@@ -86,15 +82,11 @@ def check_prerequisites():
     # Check if vsce is installed (with .cmd extension on Windows)
     vsce_cmd = "vsce.cmd" if IS_WINDOWS else "vsce"
     try:
-        result = subprocess.run(
-            [vsce_cmd, "--version"], capture_output=True, text=True, check=True
-        )
+        result = subprocess.run([vsce_cmd, "--version"], capture_output=True, text=True, check=True)
         print(f"✅ vsce: {result.stdout.strip()}")
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("⚠️  vsce is not installed. Installing globally...")
-        if not run_command(
-            ["npm", "install", "-g", "@vscode/vsce"], "Installing vsce", shell=False
-        ):
+        if not run_command(["npm", "install", "-g", "@vscode/vsce"], "Installing vsce", shell=False):
             return False
 
     return True
@@ -152,17 +144,11 @@ def prompt_version_update():
 
     version = package_data.get("version")
     if not version:
-        print(
-            "\n⚠️  package.json is missing a 'version' field, skipping version update prompt"
-        )
+        print("\n⚠️  package.json is missing a 'version' field, skipping version update prompt")
         return True
 
     print(f"\n📌 Current version: {version}")
-    response = (
-        input("Would you like to update the version before building? [Y/n]: ")
-        .strip()
-        .lower()
-    )
+    response = input("Would you like to update the version before building? [Y/n]: ").strip().lower()
     if response in ("n", "no"):
         return True
 
@@ -174,12 +160,8 @@ def prompt_version_update():
 
     # Show what each option will do
     print("\nSelect version increment:")
-    print(
-        f"  1. Patch (bug fixes):        {major}.{minor}.{patch} → {major}.{minor}.{patch + 1} [default]"
-    )
-    print(
-        f"  2. Minor (new features):     {major}.{minor}.{patch} → {major}.{minor + 1}.0"
-    )
+    print(f"  1. Patch (bug fixes):        {major}.{minor}.{patch} → {major}.{minor}.{patch + 1} [default]")
+    print(f"  2. Minor (new features):     {major}.{minor}.{patch} → {major}.{minor + 1}.0")
     print(f"  3. Major (breaking changes): {major}.{minor}.{patch} → {major + 1}.0.0")
 
     while True:
@@ -250,9 +232,7 @@ def compile_typescript():
 
 def bundle_with_esbuild():
     """Bundle the extension with esbuild so dist/ assets exist for activation."""
-    return run_command(
-        ["npm", "run", "package"], "Bundling extension with esbuild", shell=False
-    )
+    return run_command(["npm", "run", "package"], "Bundling extension with esbuild", shell=False)
 
 
 def run_tests():
@@ -265,12 +245,8 @@ def run_tests():
         scripts = package_data.get("scripts", {})
         if "test" in scripts:
             print("\n🧪 VS Code extension tests require VS Code Test Runner")
-            print(
-                "⚠️  Skipping tests during VSIX build (tests need VS Code environment)"
-            )
-            print(
-                "💡 To run tests: Use VS Code's Test Explorer or 'npm test' in VS Code terminal"
-            )
+            print("⚠️  Skipping tests during VSIX build (tests need VS Code environment)")
+            print("💡 To run tests: Use VS Code's Test Explorer or 'npm test' in VS Code terminal")
             return True
         else:
             print("\n⚠️  No test script found in package.json, skipping tests...")
@@ -288,6 +264,51 @@ def package_extension(version, extension_name):
         f"Packaging extension as {output_name}",
         shell=False,
     )
+
+
+def verify_vsix(vsix_path: Path) -> bool:
+    """Verify that the VSIX does not contain excluded files."""
+    import zipfile
+
+    print(f"\n🔍 Verifying package content: {vsix_path.name}")
+
+    if not vsix_path.exists():
+        print(f"❌ Error: VSIX file not found at {vsix_path}")
+        return False
+
+    excluded_patterns = [
+        "build_vsix.py",
+        "old_ikon/",
+    ]
+
+    found_excluded = []
+    try:
+        with zipfile.ZipFile(vsix_path, "r") as z:
+            file_list = z.namelist()
+
+            for excluded in excluded_patterns:
+                for file_in_zip in file_list:
+                    # Remove the 'extension/' prefix that vsce adds to all files in the zip
+                    # vsce packages everything inside an 'extension/' folder in the zip
+                    rel_path = file_in_zip[10:] if file_in_zip.startswith("extension/") else file_in_zip
+
+                    if excluded.endswith("/"):
+                        if rel_path.startswith(excluded):
+                            found_excluded.append(rel_path)
+                    elif rel_path == excluded:
+                        found_excluded.append(rel_path)
+
+        if found_excluded:
+            print(f"❌ Error: Found excluded files in package:")
+            for f in found_excluded:
+                print(f"  - {f}")
+            return False
+
+        print("✅ Verification passed: No excluded files found in package")
+        return True
+    except Exception as exc:
+        print(f"❌ Verification failed with error: {exc}")
+        return False
 
 
 def prune_vsix_files(keep_latest: int = 2) -> None:
@@ -410,9 +431,7 @@ def main(keep_build: bool = False):
         # Step 4: Get dev-time entrypoint and version from package.json
         dev_main = get_package_main()
         if not dev_main:
-            print(
-                "\n⚠️  Unable to determine current package main entry (package.json missing?)"
-            )
+            print("\n⚠️  Unable to determine current package main entry (package.json missing?)")
             return
 
         version = get_version()
@@ -449,6 +468,14 @@ def main(keep_build: bool = False):
             if not package_extension(version, extension_name):
                 print("\n❌ Extension packaging failed!")
                 return
+
+            # Step 11: Verify package content
+            if not verify_vsix(expected_vsix):
+                print("\n❌ Extension verification failed!")
+                # Remove the invalid VSIX
+                if expected_vsix.exists():
+                    expected_vsix.unlink()
+                return
         finally:
             set_package_main(original_main or "./out/extension.js")
 
@@ -456,7 +483,7 @@ def main(keep_build: bool = False):
 
         success = True
 
-        # Step 11: Report success
+        # Step 12: Report success
         vsix_file = find_vsix_file(preferred=expected_vsix)
         if vsix_file:
             size_mb = vsix_file.stat().st_size / (1024 * 1024)
@@ -488,9 +515,7 @@ def main(keep_build: bool = False):
 
 if __name__ == "__main__":
     try:
-        parser = argparse.ArgumentParser(
-            description="Build and package the VS Code extension."
-        )
+        parser = argparse.ArgumentParser(description="Build and package the VS Code extension.")
         parser.add_argument(
             "--keep-build",
             dest="keep_build",
