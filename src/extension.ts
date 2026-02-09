@@ -197,12 +197,16 @@ export function activate(context: vscode.ExtensionContext) {
 						)
 					: undefined;
 
+				const backgroundExecutions = Array.from(
+					activeExecutions.values(),
+				).filter((d) => d.terminal !== activeTerminal);
+
 				const options: vscode.QuickPickItem[] = [];
 
 				if (activeExecution) {
 					options.push({
 						label: '$(refresh) Reset Timer',
-						description: `Last activity: ${Math.floor((Date.now() - activeExecution.lastActivity) / 1000)}s ago`,
+						description: `Active terminal: ${activeExecution.commandLine} (${Math.floor((Date.now() - activeExecution.lastActivity) / 1000)}s idle)`,
 					});
 					options.push({
 						label: '$(clock) Snooze 5m',
@@ -219,6 +223,27 @@ export function activate(context: vscode.ExtensionContext) {
 					options.push({
 						label: '$(terminate) Terminate',
 						description: 'Close this terminal session',
+					});
+					options.push({
+						label: '',
+						kind: vscode.QuickPickItemKind.Separator,
+					});
+				}
+
+				if (backgroundExecutions.length > 0) {
+					options.push({
+						label: 'Background Tasks',
+						kind: vscode.QuickPickItemKind.Separator,
+					});
+					for (const exec of backgroundExecutions) {
+						options.push({
+							label: `$(terminal) ${exec.terminal.name}: ${exec.commandLine}`,
+							description: `Last activity: ${Math.floor((Date.now() - exec.lastActivity) / 1000)}s ago`,
+						});
+					}
+					options.push({
+						label: '$(close-all) Terminate All Background Tasks',
+						description: `Stop all ${backgroundExecutions.length} background sessions`,
 					});
 					options.push({
 						label: '',
@@ -259,7 +284,16 @@ export function activate(context: vscode.ExtensionContext) {
 				});
 
 				if (selection) {
-					if (selection.label.includes('Reset Timer') && activeExecution) {
+					if (
+						selection.label === '$(close-all) Terminate All Background Tasks'
+					) {
+						for (const exec of backgroundExecutions) {
+							await terminateExecution(exec);
+						}
+					} else if (
+						selection.label === '$(refresh) Reset Timer' &&
+						activeExecution
+					) {
 						activeExecution.lastActivity = Date.now();
 						activeExecution.idleNotified = false;
 						activeExecution.obnoxiousNotified = false;
@@ -268,7 +302,10 @@ export function activate(context: vscode.ExtensionContext) {
 							activeExecution.dismissNotification();
 							activeExecution.dismissNotification = undefined;
 						}
-					} else if (selection.label.includes('Snooze') && activeExecution) {
+					} else if (
+						selection.label.startsWith('$(clock) Snooze') &&
+						activeExecution
+					) {
 						const minsMatch = selection.label.match(/\d+/);
 						const mins = minsMatch ? parseInt(minsMatch[0]) : 5;
 						activeExecution.snoozeUntil = Date.now() + mins * 60000;
@@ -283,13 +320,18 @@ export function activate(context: vscode.ExtensionContext) {
 							activeExecution.dismissNotification();
 							activeExecution.dismissNotification = undefined;
 						}
-					} else if (selection.label.includes('Terminate') && activeExecution) {
+					} else if (
+						selection.label === '$(terminate) Terminate' &&
+						activeExecution
+					) {
 						await terminateExecution(activeExecution);
-					} else if (selection.label.includes('Open Settings')) {
+					} else if (selection.label === '$(settings-gear) Open Settings') {
 						vscode.commands.executeCommand(
 							'terminal-idle-monitor.openSettings',
 						);
-					} else if (selection.label.includes('Exclude Current Terminal')) {
+					} else if (
+						selection.label === '$(exclude) Exclude Current Terminal'
+					) {
 						const activeExecution = Array.from(activeExecutions.values()).find(
 							(d) => d.terminal === activeTerminal,
 						);
@@ -321,7 +363,7 @@ export function activate(context: vscode.ExtensionContext) {
 								);
 							}
 						}
-					} else {
+					} else if (selection.label.includes('Destructive Mode')) {
 						const isWorkspaceToggle = selection.label.includes('(Workspace)');
 						const newValue = isWorkspaceToggle ? !workspaceValue : !globalValue;
 						const target = isWorkspaceToggle
@@ -498,6 +540,7 @@ export function activate(context: vscode.ExtensionContext) {
 			? '$(chat-sparkle-warning)'
 			: '$(terminal-cmd)';
 		let activeTerminalDataFound = false;
+		let monitoredTasksCount = 0;
 
 		// Use Array.from to avoid issues if the map is modified during iteration (e.g. by terminal disposal)
 		for (const data of Array.from(activeExecutions.values())) {
@@ -509,6 +552,7 @@ export function activate(context: vscode.ExtensionContext) {
 				continue;
 			}
 
+			monitoredTasksCount++;
 			const isSnoozed = now < data.snoozeUntil;
 			const elapsed = Math.floor((now - data.startTime) / 1000);
 			const idle = Math.floor((now - data.lastActivity) / 1000);
@@ -722,7 +766,12 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		if (!activeTerminalDataFound) {
-			if (config.get<boolean>('statusBarAlwaysVisible')) {
+			if (monitoredTasksCount > 0) {
+				statusBarItem.text = config.get<boolean>('displayIdleText')
+					? `${icon} (${monitoredTasksCount}) tasks`
+					: icon;
+				statusBarItem.show();
+			} else if (config.get<boolean>('statusBarAlwaysVisible')) {
 				statusBarItem.text = config.get<boolean>('displayIdleText')
 					? `${icon} Idle`
 					: icon;
@@ -772,14 +821,23 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			} catch {
 			} finally {
+				if (data.dismissNotification) {
+					data.dismissNotification();
+					data.dismissNotification = undefined;
+				}
 				activeExecutions.delete(event.execution);
 			}
 		}),
 	);
 	context.subscriptions.push(
-		vscode.window.onDidEndTerminalShellExecution((e) =>
-			activeExecutions.delete(e.execution),
-		),
+		vscode.window.onDidEndTerminalShellExecution((e) => {
+			const data = activeExecutions.get(e.execution);
+			if (data && data.dismissNotification) {
+				data.dismissNotification();
+				data.dismissNotification = undefined;
+			}
+			activeExecutions.delete(e.execution);
+		}),
 	);
 
 	context.subscriptions.push(
